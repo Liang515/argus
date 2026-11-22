@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, message, open } from "@tauri-apps/plugin-dialog";
+import type { Update } from "@tauri-apps/plugin-updater";
 import { FolderOpen } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
@@ -40,6 +41,7 @@ import {
   type ThemeId,
   themeFromTerminal,
 } from "./lib/themes";
+import { findUpdate, installAndRelaunch, UPDATE_CHECK_MS } from "./lib/updates";
 
 interface Workspace {
   tabs: Tab[];
@@ -115,6 +117,8 @@ export default function App() {
   // 有安裝的編輯器；null 表示還沒偵測完
   const [apps, setApps] = useState<OpenTarget[] | null>(null);
   const detectRef = useRef<(force?: boolean) => void>(() => {});
+  const [update, setUpdate] = useState<Update | null>(null);
+  const [updating, setUpdating] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   // all：一般切換器；duplicate：⌘⇧T 選擇怎麼在同專案再開分頁
@@ -217,6 +221,14 @@ export default function App() {
       }
     });
     return () => void unlisten.then((f) => f());
+  }, []);
+
+  // 檢查新版：啟動時一次，之後每 6 小時。只看正式發佈的版本（草稿不會推送）
+  useEffect(() => {
+    const run = () => void findUpdate().then((found) => found && setUpdate(found));
+    run();
+    const timer = setInterval(run, UPDATE_CHECK_MS);
+    return () => clearInterval(timer);
   }, []);
 
   // 全螢幕時 macOS 紅綠燈會隱藏，分頁列不用再預留左側空間
@@ -488,6 +500,34 @@ export default function App() {
     [insertTabAfter, sessionFor],
   );
 
+  /** 更新會重開 Argus：有分頁在跑程式時先確認（和 ⌘Q 一樣的考量）。 */
+  const applyUpdate = useCallback(async () => {
+    if (!update || updating) return;
+    const ids = latest.current.tabs.map((tab) => tab.id);
+    const busy = await Promise.all(
+      ids.map((id) => invoke<boolean>("pty_is_busy", { id }).catch(() => false)),
+    );
+    const count = busy.filter(Boolean).length;
+    if (
+      count > 0 &&
+      !(await ask(t("update.busy", { count }), {
+        title: t("update.title", { version: update.version }),
+        kind: "warning",
+        okLabel: t("update.ok"),
+        cancelLabel: t("app.cancel"),
+      }))
+    ) {
+      return;
+    }
+    setUpdating(true);
+    try {
+      await installAndRelaunch(update);
+    } catch (err) {
+      setUpdating(false);
+      await message(String(err), { title: t("update.failed"), kind: "error" });
+    }
+  }, [update, updating]);
+
   const closeHelp = useCallback(() => {
     setHelpOpen(false);
     const { activeId: active } = latest.current;
@@ -655,6 +695,9 @@ export default function App() {
         onAgent={(intent, agent) => void agentAction(intent, agent)}
         onInstallAgent={installAgent}
         onAgentMenuOpen={onAgentMenuOpen}
+        updateVersion={update?.version ?? null}
+        updating={updating}
+        onUpdate={() => void applyUpdate()}
       />
       <div className="flex min-h-0 flex-1">
         <main ref={stageRef} className="relative min-h-0 min-w-0 flex-1">

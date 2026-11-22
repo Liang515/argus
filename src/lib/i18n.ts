@@ -88,6 +88,14 @@ const zh = {
     "{count} 個分頁還有程式在執行。結束會關閉這些終端機，執行中的指令會被中斷；Claude Code 的對話之後仍可用「接續」找回。要結束 Argus 嗎？",
   "app.quitOk": "結束",
   "app.cancel": "取消",
+  "update.button": "新版 v{version}",
+  "update.buttonTitle": "有新版本 v{version}，點一下下載、安裝並重開 Argus",
+  "update.installing": "更新中…",
+  "update.title": "更新到 v{version}",
+  "update.busy":
+    "{count} 個分頁還有程式在執行。更新會重開 Argus，執行中的指令會被中斷；Claude Code 的對話之後仍可用「接續」找回。要更新嗎？",
+  "update.ok": "更新並重開",
+  "update.failed": "更新失敗",
   "app.dupSame": "同一個資料夾（共用檔案，適合看 log、跑指令）",
   "app.dupWorktree": "新的 git worktree（獨立資料夾與分支，兩個 agent 不會互相覆蓋）",
   "app.dupPlaceholder": "在目前專案再開一個分頁…",
@@ -250,6 +258,15 @@ const en: Record<MessageKey, string> = {
     "{count} tab(s) still have something running. Quitting closes these terminals and interrupts running commands; Claude Code conversations can still be resumed later. Quit Argus?",
   "app.quitOk": "Quit",
   "app.cancel": "Cancel",
+  "update.button": "Update v{version}",
+  "update.buttonTitle":
+    "Version v{version} is available. Click to download, install and restart Argus",
+  "update.installing": "Updating…",
+  "update.title": "Update to v{version}",
+  "update.busy":
+    "{count} tab(s) still have something running. Updating restarts Argus and interrupts running commands; Claude Code conversations can still be resumed later. Update now?",
+  "update.ok": "Update and restart",
+  "update.failed": "Update failed",
   "app.dupSame": "Same folder (shared files; good for logs and commands)",
   "app.dupWorktree":
     "New Git worktree (its own folder and branch, so two agents don't overwrite each other)",

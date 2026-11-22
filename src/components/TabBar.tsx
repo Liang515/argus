@@ -1,4 +1,4 @@
-import { ChevronDown, GitBranch, Keyboard, Plus, X } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, GitBranch, Keyboard, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import { t } from "../lib/i18n";
@@ -57,6 +57,10 @@ interface Props {
   onAgent: (intent: AgentIntent, agent?: AgentId) => void;
   onInstallAgent: (agent: AgentId) => void;
   onAgentMenuOpen: () => void;
+  /** 有新版時的版本號，沒有就是 null（不顯示任何東西） */
+  updateVersion: string | null;
+  updating: boolean;
+  onUpdate: () => void;
 }
 
 export function TabBar({
@@ -77,6 +81,9 @@ export function TabBar({
   onAgent,
   onInstallAgent,
   onAgentMenuOpen,
+  updateVersion,
+  updating,
+  onUpdate,
 }: Props) {
   const activeStatus = activeId ? (statuses[activeId] ?? "off") : "off";
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -244,6 +251,18 @@ export function TabBar({
           hidden={hidden}
           onSelect={onSelect}
         />
+      )}
+      {updateVersion && (
+        <button
+          type="button"
+          onClick={onUpdate}
+          disabled={updating}
+          title={t("update.buttonTitle", { version: updateVersion })}
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[12px] text-deck-accent hover:bg-deck-hover disabled:opacity-60"
+        >
+          <ArrowUpCircle size={13} />
+          {updating ? t("update.installing") : t("update.button", { version: updateVersion })}
+        </button>
       )}
       {activeId && (
         <AgentButtons

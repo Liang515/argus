@@ -50,6 +50,15 @@
       "signingIdentity": "-"
     },
     "copyright": "© 2026 Liang515",
-    "shortDescription": "Terminal workspace for coding agents"
+    "shortDescription": "Terminal workspace for coding agents",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERBQ0YzRkIwNUVGQjU5REYKUldUZldmdGVzRC9QMmc5WnVFZyt0ZG1vYXZhV3FsdmxFNVpTc1EzblQzWDJ3cFdJREhvV0NGam4K",
+      "endpoints": [
+        "https://github.com/Liang515/argus/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
