@@ -1,7 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
-import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { type ILink, type ITheme, Terminal } from "@xterm/xterm";
@@ -92,8 +92,9 @@ export class TerminalSession {
         if (event.metaKey && /^https?:\/\//i.test(uri)) void openUrl(uri);
       }),
     );
-    this.term.loadAddon(new Unicode11Addon());
-    this.term.unicode.activeVersion = "11";
+    // 寬度要和 agent（string-width）及 macOS「終端機」一致：⚠️ 這類「符號＋表情變體」算 2 格。
+    // 舊的 Unicode 11 規則算 1 格，長對話重畫時會整個偏一行（接回對話時輸入框多一行空白）。
+    this.term.loadAddon(new UnicodeGraphemesAddon());
     this.term.registerLinkProvider({
       provideLinks: (y, callback) => void this.pathLinks(y).then(callback),
     });
