@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   activeAfterClose,
   dropIndex,
+  hiddenTabIds,
   moveTab,
+  overflowAlert,
   resolveSelect,
   shortcutAction,
   type Tab,
@@ -144,5 +146,34 @@ describe("activeAfterClose", () => {
   });
   it("全部關完回傳 null", () => {
     expect(activeAfterClose([tabs[0]], "a", "a")).toBeNull();
+  });
+});
+
+describe("hiddenTabIds", () => {
+  const view = { left: 100, right: 500 };
+  it("完全或部分在可見範圍外的分頁都算看不到", () => {
+    const tabs = [
+      { id: "a", left: 100, right: 220 },
+      { id: "b", left: 224, right: 344 },
+      { id: "c", left: 440, right: 560 }, // 右邊被切掉
+      { id: "d", left: 564, right: 684 }, // 完全在右邊外
+      { id: "e", left: -30, right: 90 }, // 捲到左邊外
+    ];
+    expect(hiddenTabIds(view, tabs)).toEqual(["c", "d", "e"]);
+  });
+  it("差幾個像素（邊框、小數）不算被切掉", () => {
+    expect(hiddenTabIds(view, [{ id: "a", left: 98, right: 502 }])).toEqual([]);
+  });
+});
+
+describe("overflowAlert", () => {
+  it("等你確認最優先，其次是已完成、執行中", () => {
+    expect(overflowAlert(["running", "done", "needs-input"])).toBe("needs-input");
+    expect(overflowAlert(["running", "done", "idle"])).toBe("done");
+    expect(overflowAlert(["idle", "running", "off"])).toBe("running");
+  });
+  it("只有待命或沒有 agent 時不提醒", () => {
+    expect(overflowAlert(["idle", "off"])).toBeNull();
+    expect(overflowAlert([])).toBeNull();
   });
 });

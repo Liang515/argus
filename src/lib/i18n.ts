@@ -29,6 +29,8 @@ const zh = {
   "tab.addTitle": "開啟專案資料夾 (⌘T)",
   "tab.shortcuts": "鍵盤快捷鍵",
   "tab.shortcutsTitle": "鍵盤快捷鍵 (⌘/)",
+  "tab.allTabs": "全部分頁",
+  "tab.hiddenCount": "還有 {count} 個分頁不在畫面上，點開看全部分頁",
 
   "palette.folderMissing": "找不到資料夾：{path}",
   "palette.placeholder": "搜尋專案或動作，或輸入路徑（~/…）開新分頁",
@@ -172,6 +174,8 @@ const en: Record<MessageKey, string> = {
   "tab.addTitle": "Open a project folder (⌘T)",
   "tab.shortcuts": "Keyboard shortcuts",
   "tab.shortcutsTitle": "Keyboard shortcuts (⌘/)",
+  "tab.allTabs": "All tabs",
+  "tab.hiddenCount": "{count} more tab(s) out of view. Click to see all tabs",
 
   "palette.folderMissing": "Folder not found: {path}",
   "palette.placeholder": "Search projects or actions, or type a path (~/…) to open it",

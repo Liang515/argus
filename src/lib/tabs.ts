@@ -86,6 +86,34 @@ export function dropIndex(midpoints: number[], from: number, x: number): number 
   return target;
 }
 
+/** 分頁超出分頁列可見範圍多少像素以上才算「看不到」（容許邊框與小數誤差）。 */
+const VISIBLE_SLACK = 4;
+
+/**
+ * 分頁列放不下時，哪些分頁不在可見範圍內（部分被切掉也算）。
+ * `view` 是分頁列可捲動區的左右邊界，`tabs` 是各分頁的左右邊界。
+ */
+export function hiddenTabIds(
+  view: { left: number; right: number },
+  tabs: { id: string; left: number; right: number }[],
+): string[] {
+  return tabs
+    .filter((t) => t.left < view.left - VISIBLE_SLACK || t.right > view.right + VISIBLE_SLACK)
+    .map((t) => t.id);
+}
+
+/**
+ * 看不到的分頁裡最需要注意的狀態，給「全部分頁」按鈕顯示提醒點：
+ * 等你確認 > 已完成（等你看結果）> 執行中。待命或沒有 agent 不提醒。
+ */
+export function overflowAlert<S extends string>(statuses: S[]): S | null {
+  for (const wanted of ["needs-input", "done", "running"]) {
+    const hit = statuses.find((s) => s === wanted);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** 依快捷鍵算出要切到哪個分頁。 */
 export function resolveSelect(tabs: Tab[], activeId: string | null, action: ShortcutAction) {
   if (tabs.length === 0) return null;

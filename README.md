@@ -4,6 +4,8 @@
 
 A terminal workspace for coding agents on macOS. Keep every project in its own tab, run Claude Code, Antigravity CLI (`agy`) or Codex in it, and see at a glance which agent is working, which one is waiting for you, and which one is done.
 
+![Argus demo showing tab status lights, live Git changes, HANDOFF.md sidebar, agent launcher, and quick switcher](docs/demo.gif)
+
 ## Features
 
 - **Status lights on every tab**: running (pulsing yellow), waiting for your confirmation (red), done (green). You don't need to switch tabs to know who needs you.

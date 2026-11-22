@@ -4,6 +4,8 @@
 
 給 coding agent 用的 macOS 終端機工作區。每個專案一個分頁，在裡面跑 Claude Code、Antigravity CLI（`agy`）或 Codex，一眼看出哪個 agent 正在工作、哪個在等你確認、哪個已經完成。
 
+![Argus 示範動畫：分頁狀態燈、即時 Git 變更、HANDOFF.md 側欄、多 agent 選單與快速切換器](docs/demo.gif)
+
 ## 功能
 
 - **每個分頁都有狀態燈**：執行中（黃色閃爍）、等你確認（紅色）、已完成（綠色）。不用切過去就知道誰需要你。

@@ -1,9 +1,9 @@
-import { GitBranch, Keyboard, Plus, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { ChevronDown, GitBranch, Keyboard, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
-import { dropIndex, type Tab } from "../lib/tabs";
+import { dropIndex, hiddenTabIds, overflowAlert, type Tab } from "../lib/tabs";
 import { AgentButtons } from "./AgentButtons";
 
 const DOT_CLASS: Record<Exclude<ClaudeStatus, "off">, string> = {
@@ -75,6 +75,8 @@ export function TabBar({
   onAgent,
 }: Props) {
   const activeStatus = activeId ? (statuses[activeId] ?? "off") : "off";
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [hidden, setHidden] = useState<string[]>([]);
 
   // 拖曳排序：用 pointer 事件自己處理（Tauri 在 macOS 會攔截 HTML5 拖放）
   const tabEls = useRef(new Map<string, HTMLDivElement>());
@@ -107,6 +109,43 @@ export function TabBar({
       ),
     );
   };
+  // 分頁放不下時，記下哪些不在畫面上，給「全部分頁」按鈕用
+  const measure = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const view = scroller.getBoundingClientRect();
+    // 版面還沒排好（寬度 0）時量不準，等下一次尺寸變化再量
+    if (view.width === 0) return;
+    const rects = [...tabEls.current].map(([id, el]) => {
+      const r = el.getBoundingClientRect();
+      return { id, left: r.left, right: r.right };
+    });
+    const next = hiddenTabIds(view, rects);
+    setHidden((prev) => (prev.join() === next.join() ? prev : next));
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 分頁或名稱變動時重新量
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    scroller.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      scroller.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [measure, tabs, labels, branches]);
+
+  // 切到看不到的分頁（⌘數字、⌘K、選單）時捲過去
+  useEffect(() => {
+    if (!activeId) return;
+    tabEls.current.get(activeId)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeId]);
+
   const onPointerUp = (e: React.PointerEvent, id: string) => {
     const d = drag.current;
     drag.current = null;
@@ -122,9 +161,11 @@ export function TabBar({
       data-tauri-drag-region
       className={`flex h-10 shrink-0 items-center gap-1 border-b border-deck-border bg-deck-panel pr-2 ${fullscreen ? "pl-2" : "pl-[84px]"}`}
     >
+      {/* 分頁不壓縮（名稱要看得清楚），放不下就捲動，或用右邊的「全部分頁」選單 */}
       <div
+        ref={scrollerRef}
         data-tauri-drag-region
-        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]"
       >
         {tabs.map((tab, i) => {
           const active = tab.id === activeId;
@@ -136,7 +177,7 @@ export function TabBar({
                 if (el) tabEls.current.set(tab.id, el);
                 else tabEls.current.delete(tab.id);
               }}
-              className={`group flex h-7 ${draggingId === tab.id ? "opacity-70 ring-1 ring-deck-border" : ""} min-w-0 max-w-56 shrink items-center rounded-md text-[12.5px] transition-colors ${
+              className={`group flex h-7 ${draggingId === tab.id ? "opacity-70 ring-1 ring-deck-border" : ""} shrink-0 items-center rounded-md text-[12.5px] transition-colors ${
                 active
                   ? "bg-deck-hover text-deck-text shadow-[inset_0_0_0_1px_var(--color-deck-border)]"
                   : "text-deck-muted hover:bg-deck-hover/60 hover:text-deck-text"
@@ -159,11 +200,11 @@ export function TabBar({
                   agent={runningAgents[tab.id] ?? "claude"}
                   active={active}
                 />
-                <span className="truncate font-medium">{labels[tab.id]}</span>
+                <span className="max-w-36 truncate font-medium">{labels[tab.id]}</span>
                 {branch && (
-                  <span className="flex min-w-0 items-center gap-0.5 text-[11px] text-deck-muted">
+                  <span className="flex items-center gap-0.5 text-[11px] text-deck-muted">
                     <GitBranch size={11} className="shrink-0" />
-                    <span className="truncate">{branch}</span>
+                    <span className="max-w-24 truncate">{branch}</span>
                   </span>
                 )}
               </button>
@@ -178,16 +219,28 @@ export function TabBar({
             </div>
           );
         })}
-        <button
-          type="button"
-          aria-label={t("tab.add")}
-          title={t("tab.addTitle")}
-          onClick={onAdd}
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-deck-muted hover:bg-deck-hover hover:text-deck-text"
-        >
-          <Plus size={15} />
-        </button>
       </div>
+      <button
+        type="button"
+        aria-label={t("tab.add")}
+        title={t("tab.addTitle")}
+        onClick={onAdd}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-deck-muted hover:bg-deck-hover hover:text-deck-text"
+      >
+        <Plus size={15} />
+      </button>
+      {hidden.length > 0 && (
+        <TabsMenu
+          tabs={tabs}
+          activeId={activeId}
+          labels={labels}
+          branches={branches}
+          statuses={statuses}
+          runningAgents={runningAgents}
+          hidden={hidden}
+          onSelect={onSelect}
+        />
+      )}
       {activeId && (
         <AgentButtons
           status={activeStatus}
@@ -207,5 +260,108 @@ export function TabBar({
         <Keyboard size={15} />
       </button>
     </header>
+  );
+}
+
+/** 分頁列放不下時出現：列出所有分頁，看不到的分頁有狀況時按鈕上會有提醒點。 */
+function TabsMenu({
+  tabs,
+  activeId,
+  labels,
+  branches,
+  statuses,
+  runningAgents,
+  hidden,
+  onSelect,
+}: {
+  tabs: Tab[];
+  activeId: string | null;
+  labels: Record<string, string>;
+  branches: Record<string, string | null>;
+  statuses: Record<string, ClaudeStatus>;
+  runningAgents: Record<string, AgentId>;
+  hidden: string[];
+  onSelect: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (
+        e instanceof KeyboardEvent
+          ? e.key === "Escape"
+          : !menuRef.current?.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const alert = overflowAlert(hidden.map((id) => statuses[id] ?? "off"));
+  const title = t("tab.hiddenCount", { count: hidden.length });
+
+  return (
+    <div ref={menuRef} className="relative shrink-0">
+      <button
+        type="button"
+        aria-label={t("tab.allTabs")}
+        aria-expanded={open}
+        title={title}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[12px] text-deck-muted hover:bg-deck-hover hover:text-deck-text"
+      >
+        {alert && alert !== "off" && <StatusDot status={alert} agent="claude" active={false} />}
+        <span>{hidden.length}</span>
+        <ChevronDown size={13} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-8 right-0 z-40 max-h-[70vh] w-72 overflow-y-auto rounded-lg border border-deck-border bg-deck-panel p-1 shadow-xl"
+        >
+          <p className="px-2.5 pt-1 pb-1.5 text-[11px] text-deck-muted">{t("tab.allTabs")}</p>
+          {tabs.map((tab, i) => {
+            const status = statuses[tab.id] ?? "off";
+            const branch = branches[tab.id];
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="menuitem"
+                title={tab.path}
+                onClick={() => {
+                  setOpen(false);
+                  onSelect(tab.id);
+                }}
+                className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-deck-hover ${
+                  tab.id === activeId ? "bg-deck-hover text-deck-text" : "text-deck-text"
+                } ${hidden.includes(tab.id) ? "" : "opacity-60"}`}
+              >
+                <span className="flex w-2 shrink-0 justify-center">
+                  <StatusDot
+                    status={status}
+                    agent={runningAgents[tab.id] ?? "claude"}
+                    active={tab.id === activeId}
+                  />
+                </span>
+                <span className="min-w-0 flex-1 truncate">{labels[tab.id]}</span>
+                {branch && (
+                  <span className="max-w-24 truncate text-[11px] text-deck-muted">{branch}</span>
+                )}
+                {i < 9 && <kbd className="text-[11px] text-deck-muted">⌘{i + 1}</kbd>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
