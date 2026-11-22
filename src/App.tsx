@@ -147,6 +147,27 @@ export default function App() {
     return () => window.removeEventListener("focus", detect);
   }, []);
 
+  // ⌘Q 或關視窗：後端先擋下來問這裡。有程式在跑的分頁就確認，否則直接結束
+  useEffect(() => {
+    const unlisten = listen("quit-requested", async () => {
+      const ids = latest.current.tabs.map((t) => t.id);
+      const busy = await Promise.all(
+        ids.map((id) => invoke<boolean>("pty_is_busy", { id }).catch(() => false)),
+      );
+      const count = busy.filter(Boolean).length;
+      const ok =
+        count === 0 ||
+        (await ask(t("app.quitBusy", { count }), {
+          title: t("app.quitTitle"),
+          kind: "warning",
+          okLabel: t("app.quitOk"),
+          cancelLabel: t("app.cancel"),
+        }));
+      void invoke(ok ? "confirm_quit" : "cancel_quit");
+    });
+    return () => void unlisten.then((f) => f());
+  }, []);
+
   // 全螢幕時 macOS 紅綠燈會隱藏，分頁列不用再預留左側空間
   useEffect(() => {
     const win = getCurrentWindow();
@@ -369,12 +390,14 @@ export default function App() {
           setTabs((prev) => prev.map((t) => (t.id === active ? { ...t, agent: chosen } : t)));
         }
         session.launched(chosen ?? preferred);
+        if (intent === "resume" && (chosen ?? preferred) === "claude") session.watchResume();
         session.run(step.command);
       } else if (step.kind === "agent") session.run(step.command);
       else if (step.kind === "new-tab") {
         const created = insertTabAfter(tab, tab.path, step.agent);
         const target = sessionFor(created);
         target.launched(step.agent);
+        if (intent === "resume" && step.agent === "claude") target.watchResume();
         target.runWhenReady(step.command);
       } else session.focus();
     },

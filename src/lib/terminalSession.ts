@@ -10,6 +10,7 @@ import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
 import { t } from "./i18n";
 import {
+  backgroundSessionId,
   type ClaudeStatus,
   DECK_OSC,
   looksLikePermissionPrompt,
@@ -19,6 +20,8 @@ import {
 import { shortcutAction } from "./tabs";
 
 const ENTER_DELAY_MS = 80;
+/** 送出 claude --resume 後留意「背景執行中」訊息的時間 */
+const RESUME_WATCH_MS = 10_000;
 
 /** 備援偵測保留的尾端文字長度，避免提示字被切在兩批輸出之間。 */
 const FALLBACK_TAIL = 300;
@@ -66,6 +69,9 @@ export class TerminalSession {
   private disposed = false;
   private status: ClaudeStatus = "off";
   private agent: AgentId = "claude";
+  /** 在這個時間之前，留意「對話在背景執行中」的訊息（Argus 剛送出 claude --resume） */
+  private resumeWatchUntil = 0;
+  private resumeTail = "";
   /** 最近一次由 Argus 啟動的 agent：沒有 hook 的 agent（Codex）靠文字偵測時，用它標示燈號。 */
   private lastLaunched: AgentId = "claude";
   /** 收過 hook 訊號後就以 hook 為準，不再用文字比對。 */
@@ -176,6 +182,15 @@ export class TerminalSession {
     this.focus();
   }
 
+  /**
+   * 接下來幾秒留意 `claude --resume` 的回應：要接續的對話若已經在背景執行
+   * （例如之前關掉 Argus 時 Claude 還在工作），自動改用 `claude attach` 接上。
+   */
+  watchResume() {
+    this.resumeWatchUntil = Date.now() + RESUME_WATCH_MS;
+    this.resumeTail = "";
+  }
+
   /** 記下這個分頁接下來啟動的是哪個 agent（給沒有 hook 的 agent 標燈號用）。 */
   launched(agent: AgentId) {
     this.lastLaunched = agent;
@@ -263,9 +278,21 @@ export class TerminalSession {
   private receive(data: unknown) {
     const bytes = toBytes(data);
     this.term.write(bytes);
-    if (this.hooksSeen) return;
+    const watching = Date.now() < this.resumeWatchUntil;
+    if (this.hooksSeen && !watching) return;
     const text = typeof bytes === "string" ? bytes : this.decoder.decode(bytes, { stream: true });
-    const plain = (this.tail + stripAnsi(text)).slice(-FALLBACK_TAIL * 2);
+    const chunk = stripAnsi(text);
+    if (watching) {
+      this.resumeTail = (this.resumeTail + chunk).slice(-FALLBACK_TAIL);
+      const id = backgroundSessionId(this.resumeTail);
+      if (id) {
+        this.resumeWatchUntil = 0;
+        this.resumeTail = "";
+        this.run(`claude attach ${id}`);
+      }
+    }
+    if (this.hooksSeen) return;
+    const plain = (this.tail + chunk).slice(-FALLBACK_TAIL * 2);
     if (looksLikePermissionPrompt(plain)) {
       this.setStatus("needs-input", this.lastLaunched);
       this.tail = "";

@@ -74,6 +74,11 @@ const zh = {
   "app.worktreeFailed": "無法建立 worktree",
   "app.closeBusy": "這個分頁還有程式在執行（例如 agent），確定要關閉嗎？",
   "app.closeTab": "關閉分頁",
+  "app.quitTitle": "結束 Argus",
+  "app.quitBusy":
+    "{count} 個分頁還有程式在執行（例如 agent）。結束後，還在工作的 agent 會轉到背景繼續，之後按「接續」就能接回來。要結束 Argus 嗎？",
+  "app.quitOk": "結束",
+  "app.cancel": "取消",
   "app.dupSame": "同一個資料夾（共用檔案，適合看 log、跑指令）",
   "app.dupWorktree": "新的 git worktree（獨立資料夾與分支，兩個 agent 不會互相覆蓋）",
   "app.dupPlaceholder": "在目前專案再開一個分頁…",
@@ -215,6 +220,11 @@ const en: Record<MessageKey, string> = {
   "app.worktreeFailed": "Couldn't create the worktree",
   "app.closeBusy": "Something is still running in this tab (such as an agent). Close it anyway?",
   "app.closeTab": "Close tab",
+  "app.quitTitle": "Quit Argus",
+  "app.quitBusy":
+    "{count} tab(s) still have something running (such as an agent). Agents that are still working will continue in the background, and Resume brings them back. Quit Argus?",
+  "app.quitOk": "Quit",
+  "app.cancel": "Cancel",
   "app.dupSame": "Same folder (shared files; good for logs and commands)",
   "app.dupWorktree":
     "New Git worktree (its own folder and branch, so two agents don't overwrite each other)",

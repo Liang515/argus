@@ -33,6 +33,16 @@ export function stripAnsi(text: string): string {
 const PERMISSION_PROMPT =
   /Do you want to (?:proceed|make this edit|create|allow|run|overwrite)|\[y\/N\]|\[Y\/n\]|\(y\/n\)/i;
 
+/**
+ * `claude --resume` 遇到已經在背景執行的對話時會拒絕，印出
+ * `"…" is running in the background (ad697cee).`；取出對話代碼好改用 `claude attach`。
+ * 代碼只接受十六進位，不會把任意輸出當成指令。
+ */
+export function backgroundSessionId(plainText: string): string | null {
+  const match = /is\s+running\s+in\s+the\s+background\s+\(([0-9a-f]{6,16})\)/i.exec(plainText);
+  return match ? match[1].toLowerCase() : null;
+}
+
 /** 備援偵測：沒有 hook 時（例如不是 zsh），從輸出文字判斷是否在等使用者確認。 */
 export function looksLikePermissionPrompt(plainText: string): boolean {
   return PERMISSION_PROMPT.test(plainText);

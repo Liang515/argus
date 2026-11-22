@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { t } from "./i18n";
-import { looksLikePermissionPrompt, parseArgusOsc, statusLabel, stripAnsi } from "./status";
+import {
+  backgroundSessionId,
+  looksLikePermissionPrompt,
+  parseArgusOsc,
+  statusLabel,
+  stripAnsi,
+} from "./status";
 
 describe("parseArgusOsc", () => {
   it("解析 hook 送來的狀態", () => {
@@ -42,5 +48,17 @@ describe("looksLikePermissionPrompt", () => {
   });
   it("一般輸出不誤判", () => {
     expect(looksLikePermissionPrompt("npm install finished, 0 vulnerabilities")).toBe(false);
+  });
+});
+
+describe("backgroundSessionId", () => {
+  it("從 claude --resume 的拒絕訊息取出對話代碼", () => {
+    const msg =
+      '"Agy 和 Claude 的切換功能" is running in the background (ad697cee).\n\nRun claude attach ad697cee to open it';
+    expect(backgroundSessionId(msg)).toBe("ad697cee");
+  });
+  it("代碼不是十六進位就不理會，避免把輸出當成指令", () => {
+    expect(backgroundSessionId("is running in the background (x; rm -rf ~)")).toBeNull();
+    expect(backgroundSessionId("nothing here")).toBeNull();
   });
 });
