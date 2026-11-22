@@ -8,8 +8,19 @@ mod workspace;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
+
+const QUIT_MENU_ID: &str = "argus-quit";
+
+/// ⌘Q（選單的 Quit）、關視窗、系統要求結束都走這裡：需要確認就交給前端，否則直接結束。
+fn request_quit<R: Runtime>(app: &AppHandle<R>) {
+    if app.state::<QuitGate>().should_ask() {
+        let _ = app.emit("quit-requested", ());
+    } else {
+        app.exit(0);
+    }
+}
 
 /// 前端在 [`QUIT_GRACE`] 內沒回應（例如卡住）時，再按一次 ⌘Q 就直接結束。
 const QUIT_GRACE: Duration = Duration::from_secs(5);
@@ -81,7 +92,8 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &PredefinedMenuItem::hide_others(app, None)?,
             &PredefinedMenuItem::show_all(app, None)?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, None)?,
+            // 不用系統內建的 Quit：macOS 上它會直接結束，跳過「有 agent 在跑」的確認
+            &MenuItem::with_id(app, QUIT_MENU_ID, "Quit Argus", true, Some("CmdOrCtrl+Q"))?,
         ],
     )?;
     let edit_menu = Submenu::with_items(
@@ -148,6 +160,11 @@ pub fn run() {
             confirm_quit,
             cancel_quit,
         ])
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == QUIT_MENU_ID {
+                request_quit(app);
+            }
+        })
         .on_window_event(|window, event| {
             // 點紅色按鈕關視窗＝結束 App，一樣先讓前端確認
             if let WindowEvent::CloseRequested { api, .. } = event
