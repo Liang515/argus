@@ -28,6 +28,7 @@ portable-pty = "0.9.0"
 tauri-plugin-dialog = "2.8.4"
 dirs = "7.0.0"
 notify = "9.0.0"
+plist = "1.10.4"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

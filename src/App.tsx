@@ -30,7 +30,16 @@ import {
   type Tab,
   tabLabels,
 } from "./lib/tabs";
-import { TerminalSession } from "./lib/terminalSession";
+import { setDefaultTerminalTheme, TerminalSession } from "./lib/terminalSession";
+import {
+  applyUi,
+  BUILT_IN,
+  isThemeId,
+  THEME_IDS,
+  type Theme,
+  type ThemeId,
+  themeFromTerminal,
+} from "./lib/themes";
 
 interface Workspace {
   tabs: Tab[];
@@ -45,6 +54,31 @@ const DETECT_RELAXED_MS = 60_000;
 /** detect_apps 偵測的編輯器數量（VS Code、Antigravity） */
 const EDITOR_COUNT = 2;
 const SIDEBAR_KEY = "argus.sidebar";
+const THEME_KEY = "argus.theme";
+
+function loadThemePref(): ThemeId {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    return isThemeId(saved) ? saved : "argus";
+  } catch {
+    return "argus";
+  }
+}
+
+/** 「跟隨終端機」讀不到設定時（沒用過「終端機」等）退回 Clear Dark。 */
+async function resolveTheme(id: ThemeId): Promise<Theme> {
+  if (id !== "terminal-app") return BUILT_IN[id];
+  const colors = await invoke<Record<string, string> | null>("terminal_app_theme").catch(
+    () => null,
+  );
+  return colors ? themeFromTerminal(colors) : BUILT_IN["clear-dark"];
+}
+
+const THEME_NAME_KEY = {
+  argus: "theme.argus",
+  "clear-dark": "theme.clearDark",
+  "terminal-app": "theme.terminalApp",
+} as const;
 
 function loadSidebarPref() {
   try {
@@ -86,6 +120,7 @@ export default function App() {
   const [palette, setPalette] = useState<"all" | "duplicate" | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(loadSidebarPref);
+  const [themeId, setThemeId] = useState<ThemeId>(loadThemePref);
   const sessions = useRef(new Map<string, TerminalSession>());
   const stageRef = useRef<HTMLDivElement>(null);
   const latest = useRef({ tabs, activeId, statuses, runningAgents, installed });
@@ -205,6 +240,25 @@ export default function App() {
     }, STALE_CHECK_MS);
     return () => clearInterval(timer);
   }, []);
+
+  // 套用配色：外框的 CSS 變數、新分頁的預設、已開的分頁都換掉，並記住選擇
+  useEffect(() => {
+    let cancelled = false;
+    void resolveTheme(themeId).then((theme) => {
+      if (cancelled) return;
+      applyUi(theme.ui);
+      setDefaultTerminalTheme(theme.terminal);
+      for (const s of sessions.current.values()) s.setTheme(theme.terminal);
+    });
+    try {
+      localStorage.setItem(THEME_KEY, themeId);
+    } catch {
+      // 無法寫入時只是下次不記得
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [themeId]);
 
   useEffect(() => {
     try {
@@ -478,6 +532,12 @@ export default function App() {
         run: () => setSidebarOpen((o) => !o),
       },
       { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => setHelpOpen(true) },
+      ...THEME_IDS.map((id) => ({
+        id: `theme-${id}`,
+        label: t("theme.pick", { name: t(THEME_NAME_KEY[id]) }),
+        hint: id === themeId ? "✓" : undefined,
+        run: () => setThemeId(id),
+      })),
     ];
     if (activeTab) {
       for (const target of ["vscode", "antigravity", "finder"] as OpenTarget[]) {
@@ -547,6 +607,7 @@ export default function App() {
     activeRunning,
     installed,
     sidebarOpen,
+    themeId,
     agentAction,
     closeTab,
     duplicateActions,

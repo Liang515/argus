@@ -3,6 +3,7 @@ mod integration;
 mod paths;
 mod project;
 mod pty;
+mod theme;
 mod workspace;
 
 use std::sync::Mutex;
@@ -161,6 +162,7 @@ pub fn run() {
             project::add_handoff_protocol,
             paths::resolve_paths,
             paths::open_path,
+            theme::terminal_app_theme,
             project::watch_project,
             project::unwatch_project,
             confirm_quit,

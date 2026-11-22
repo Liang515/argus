@@ -53,6 +53,7 @@ version = "0.1.9"
 dependencies = [
  "dirs",
  "notify",
+ "plist",
  "portable-pty",
  "serde",
  "serde_json",

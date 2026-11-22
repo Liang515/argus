@@ -20,6 +20,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
       [lang === "en" ? "⌘K or ⌘P" : "⌘K 或 ⌘P", t("help.panels.palette")],
       ["⌘B", t("help.panels.sidebar")],
       ["⌘/", t("help.panels.help")],
+      [t("help.panels.themeKeys"), t("help.panels.theme")],
     ],
   },
   {

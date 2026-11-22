@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { type ILink, Terminal } from "@xterm/xterm";
+import { type ILink, type ITheme, Terminal } from "@xterm/xterm";
 import type { AgentId } from "./agents";
 import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
@@ -18,6 +18,7 @@ import {
   stripAnsi,
 } from "./status";
 import { shortcutAction } from "./tabs";
+import { BUILT_IN } from "./themes";
 
 const ENTER_DELAY_MS = 80;
 /** 送出 claude --resume 後留意「背景執行中」訊息的時間（包含在清單裡挑對話的時間） */
@@ -29,29 +30,12 @@ const ATTACH_RETRY_MS = 200;
 /** 備援偵測保留的尾端文字長度，避免提示字被切在兩批輸出之間。 */
 const FALLBACK_TAIL = 300;
 
-const THEME = {
-  background: "#0d0f12",
-  foreground: "#d7dae0",
-  cursor: "#a594ff",
-  cursorAccent: "#0d0f12",
-  selectionBackground: "#3a4150",
-  black: "#1c1f26",
-  red: "#f07178",
-  green: "#9ece6a",
-  yellow: "#e5c07b",
-  blue: "#61afef",
-  magenta: "#c678dd",
-  cyan: "#56b6c2",
-  white: "#d7dae0",
-  brightBlack: "#5c6370",
-  brightRed: "#ff8b92",
-  brightGreen: "#b5e08b",
-  brightYellow: "#f0d197",
-  brightBlue: "#82c0f5",
-  brightMagenta: "#d896e8",
-  brightCyan: "#7fd3dd",
-  brightWhite: "#ffffff",
-};
+/** 新開的分頁用目前選的配色（App 啟動與切換配色時更新）。 */
+let currentTheme: ITheme = BUILT_IN.argus.terminal;
+
+export function setDefaultTerminalTheme(theme: ITheme) {
+  currentTheme = theme;
+}
 
 function toBytes(data: unknown): Uint8Array | string {
   if (data instanceof ArrayBuffer) return new Uint8Array(data);
@@ -99,7 +83,7 @@ export class TerminalSession {
       // 只有正在打字的分頁閃游標（見 setBlink），背景分頁不必一直重繪
       cursorBlink: false,
       macOptionIsMeta: true,
-      theme: THEME,
+      theme: currentTheme,
     });
     this.term.loadAddon(this.fitAddon);
     // 網址和檔案路徑一樣要 ⌘＋點擊才開，一般點擊留給選取文字；只開 http(s)
@@ -169,6 +153,10 @@ export class TerminalSession {
 
   focus() {
     this.term.focus();
+  }
+
+  setTheme(theme: ITheme) {
+    this.term.options.theme = theme;
   }
 
   setBlink(on: boolean) {
