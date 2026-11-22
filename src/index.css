@@ -1,0 +1,36 @@
+@import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-deck-bg: #0d0f12;
+  --color-deck-panel: #13161b;
+  --color-deck-border: #22262e;
+  --color-deck-hover: #1a1e25;
+  --color-deck-text: #d7dae0;
+  --color-deck-muted: #7d8590;
+  --color-deck-accent: #a594ff;
+  /* Claude 狀態燈：色相拉開，小圓點也能一眼分辨 */
+  --color-status-running: #e3b341;
+  --color-status-alert: #f85149;
+  --color-status-done: #3fb950;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Helvetica Neue", sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-deck-bg);
+  color: var(--color-deck-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.xterm {
+  height: 100%;
+}

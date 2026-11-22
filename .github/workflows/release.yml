@@ -1,0 +1,49 @@
+name: Release
+
+# 推 v* 標籤（例如 v0.1.0）時，build 支援 Apple Silicon 與 Intel 的 .dmg，建立 draft release。
+# 在 GitHub 的機器上 build，安裝檔裡不會有開發者電腦的路徑；簽名用 ad-hoc，不含個人憑證。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target universal-apple-darwin
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: Argus ${{ github.ref_name }}
+          releaseBody: |
+            下載 `.dmg`，把 Argus 拖進「應用程式」。第一次打開若被擋下，到「系統設定 → 隱私權與安全性」按「強制打開」。
+            Download the `.dmg` and drag Argus into Applications. If macOS blocks it the first time, open System Settings → Privacy & Security and click Open Anyway.
+          releaseDraft: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Argus-macos-universal
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Argus</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f242c"/>
+      <stop offset="1" stop-color="#0d0f12"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a594ff"/>
+      <stop offset="1" stop-color="#7c6cf2"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS 圖示格線：824×824 主體置中 -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
+  <!-- 狀態燈 -->
+  <circle cx="232" cy="236" r="26" fill="#e5c07b"/>
+  <circle cx="312" cy="236" r="26" fill="#f07178"/>
+  <circle cx="392" cy="236" r="26" fill="#9ece6a"/>
+  <!-- 終端機提示符 >_ -->
+  <path d="M286 430 L446 560 L286 690" fill="none" stroke="url(#accent)" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="510" y="654" width="236" height="72" rx="36" fill="#d7dae0"/>
+</svg>
