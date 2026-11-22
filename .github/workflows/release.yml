@@ -1,7 +1,9 @@
 name: Release
 
 # 推 v* 標籤（例如 v0.1.0）時，build 支援 Apple Silicon 與 Intel 的 .dmg，建立 draft release。
-# 在 GitHub 的機器上 build，安裝檔裡不會有開發者電腦的路徑；簽名用 ad-hoc，不含個人憑證。
+# 在 GitHub 的機器上 build，安裝檔裡不會有開發者電腦的路徑。
+# 有設定 Apple 憑證的 secrets 時用 Developer ID 簽名並送 Apple 公證（使用者不必「強制打開」）；
+# 沒有設定（例如 fork）時退回 ad-hoc 簽名。
 on:
   push:
     tags: ["v*"]
@@ -34,13 +36,20 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target universal-apple-darwin
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: Argus ${{ github.ref_name }}
           releaseBody: |
-            下載 `.dmg`，把 Argus 拖進「應用程式」。第一次打開若被擋下，到「系統設定 → 隱私權與安全性」按「強制打開」。
-            Download the `.dmg` and drag Argus into Applications. If macOS blocks it the first time, open System Settings → Privacy & Security and click Open Anyway.
+            下載 `.dmg`，把 Argus 拖進「應用程式」即可。
+            Download the `.dmg` and drag Argus into Applications.
           releaseDraft: true
 
       - uses: actions/upload-artifact@v4

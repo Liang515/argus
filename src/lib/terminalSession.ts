@@ -4,9 +4,10 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { Terminal } from "@xterm/xterm";
+import { type ILink, Terminal } from "@xterm/xterm";
 import type { AgentId } from "./agents";
 import { handleEditKeyEvent } from "./editKeys";
+import { findPathCandidates, lineText } from "./filePaths";
 import {
   type ClaudeStatus,
   DECK_OSC,
@@ -92,6 +93,9 @@ export class TerminalSession {
     this.term.loadAddon(new WebLinksAddon((_event, uri) => void openUrl(uri)));
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = "11";
+    this.term.registerLinkProvider({
+      provideLinks: (y, callback) => void this.pathLinks(y).then(callback),
+    });
     this.term.parser.registerOscHandler(DECK_OSC, (data) => {
       const parsed = parseArgusOsc(data);
       if (parsed) {
@@ -193,6 +197,41 @@ export class TerminalSession {
   clearStaleStatus() {
     this.hooksSeen = false;
     this.setStatus("off", this.agent);
+  }
+
+  /**
+   * 這一行裡確實存在的檔案路徑變成連結（相對路徑以分頁的專案資料夾為準）。
+   * ⌘＋點擊開啟（資料夾開在 Finder），⌘⌥＋點擊在 Finder 顯示；一般點擊留給選取文字。
+   */
+  private async pathLinks(y: number): Promise<ILink[] | undefined> {
+    const line = this.term.buffer.active.getLine(y - 1);
+    if (!line) return undefined;
+    const cells = Array.from({ length: line.length }, (_, x) => line.getCell(x)).filter(
+      (c) => c !== undefined,
+    );
+    const { text, col, width } = lineText(cells);
+    const found = findPathCandidates(text);
+    if (found.length === 0) return undefined;
+    const resolved = await invoke<({ path: string; isDir: boolean } | null)[]>("resolve_paths", {
+      base: this.cwd,
+      candidates: found.map((c) => c.path),
+    }).catch(() => []);
+    const links: ILink[] = [];
+    found.forEach((c, i) => {
+      const target = resolved[i];
+      if (!target) return;
+      const last = c.end - 1;
+      links.push({
+        range: { start: { x: col[c.start] + 1, y }, end: { x: col[last] + width[last], y } },
+        text: text.slice(c.start, c.end),
+        decorations: { underline: true, pointerCursor: true },
+        activate: (event) => {
+          if (!event.metaKey) return;
+          void invoke("open_path", { path: target.path, reveal: event.altKey }).catch(() => {});
+        },
+      });
+    });
+    return links.length > 0 ? links : undefined;
   }
 
   /** agent 預設 Claude：文字備援偵測只認得 Claude 的權限提示。 */

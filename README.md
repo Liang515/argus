@@ -20,7 +20,7 @@ Named after Argus Panoptes, the hundred-eyed giant who never slept with all eyes
 ## Install
 
 1. Download the latest `Argus_*.dmg` from [Releases](https://github.com/Liang515/argus/releases) and drag Argus into Applications.
-2. The first time you open it, macOS blocks it because the app is not notarized by Apple. Click **Done**, then open **System Settings → Privacy & Security**, scroll down to the message about Argus and click **Open Anyway**. You only need to do this once.
+2. The first time you open it, macOS shows "“Argus” Not Opened" because the app is not notarized by Apple. Click **Done** (not Move to Trash), then open **System Settings → Privacy & Security**, scroll down to the message about Argus and click **Open Anyway**. You only need to do this once.
 
 Requirements:
 

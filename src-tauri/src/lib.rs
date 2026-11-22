@@ -1,5 +1,6 @@
 mod git;
 mod integration;
+mod paths;
 mod project;
 mod pty;
 mod workspace;
@@ -80,6 +81,8 @@ pub fn run() {
             project::detect_agents,
             project::detect_apps,
             project::add_handoff_protocol,
+            paths::resolve_paths,
+            paths::open_path,
             project::watch_project,
             project::unwatch_project,
         ])
