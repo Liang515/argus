@@ -18,6 +18,31 @@ pub struct Integration {
     pub zsh_dir: PathBuf,
 }
 
+/// 找出要寫燈號的終端機，兩個 hook 共用（安裝時代入 `__ARGUS_TARGET__`）。
+///
+/// 寫到 agent 自己所在的終端機：在 Argus 分頁裡就是那個分頁；Claude 轉到背景後
+/// 被 `claude attach` 接回時，背景終端機的輸出（含燈號訊號）會轉送到接上的分頁。
+/// hook 本身沒有 controlling tty，所以往上找祖先行程；找不到才用啟動時記下的 ARGUS_TTY。
+/// `ARGUS_NO_TTY_LOOKUP` 給測試用，避免寫到跑測試的終端機。
+const TARGET_LOOKUP: &str = r#"target="$ARGUS_TTY"
+if [ -z "$ARGUS_NO_TTY_LOOKUP" ]; then
+  pid=$PPID
+  n=0
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ] && [ "$n" -lt 8 ]; do
+    t=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')
+    case "$t" in
+      ""|"?"|"??") ;;
+      *) target="/dev/$t"; break ;;
+    esac
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    n=$((n + 1))
+  done
+fi"#;
+
+fn with_target_lookup(script: &str) -> String {
+    script.replace("__ARGUS_TARGET__", TARGET_LOOKUP)
+}
+
 const HOOK_SCRIPT: &str = r#"#!/bin/sh
 # Argus hook：把 Claude Code 狀態寫回所屬分頁（由 Argus 自動產生，請勿手動修改）
 state="$1"
@@ -29,8 +54,9 @@ if [ "$state" = "notify" ]; then
     *) state="needs-input" ;;
   esac
 fi
+__ARGUS_TARGET__
 # 寫入最多等 1 秒：終端機卡住時放棄這次燈號，不拖住 Claude（hook 跑完 Claude 才會繼續）
-printf '\033]7777;argus;%s\007' "$state" > "$ARGUS_TTY" 2>/dev/null &
+printf '\033]7777;argus;%s\007' "$state" > "$target" 2>/dev/null &
 writer=$!
 # 計時器 1 秒後還沒寫完就中止；輸出導向 /dev/null，Claude 才不會等它的 stdout
 ( sleep 1; kill "$writer" 2>/dev/null ) > /dev/null 2>&1 &
@@ -53,8 +79,9 @@ const AGY_HOOK_SCRIPT: &str = r#"#!/bin/sh
 # 不在 Argus 裡（沒有 ARGUS_TTY）時什麼都不做。
 cat > /dev/null
 if [ -n "$ARGUS_TTY" ]; then
+__ARGUS_TARGET__
   # 寫入最多等 1 秒，終端機卡住時不拖住 agy
-  printf '\033]7777;argus;%s;agy\007' "$1" > "$ARGUS_TTY" 2>/dev/null &
+  printf '\033]7777;argus;%s;agy\007' "$1" > "$target" 2>/dev/null &
   writer=$!
   ( sleep 1; kill "$writer" 2>/dev/null ) > /dev/null 2>&1 &
   watchdog=$!
@@ -87,7 +114,10 @@ pub fn install_agy_plugin(gemini_config: &Path) -> io::Result<bool> {
     fs::create_dir_all(&dir)?;
     fs::write(dir.join("plugin.json"), AGY_PLUGIN_JSON)?;
     fs::write(dir.join("hooks.json"), AGY_HOOKS_JSON)?;
-    fs::write(dir.join("argus-hook.sh"), AGY_HOOK_SCRIPT)?;
+    fs::write(
+        dir.join("argus-hook.sh"),
+        with_target_lookup(AGY_HOOK_SCRIPT),
+    )?;
     Ok(true)
 }
 
@@ -178,7 +208,7 @@ pub fn install_to(dir: &Path) -> io::Result<Integration> {
     fs::create_dir_all(&zsh_dir)?;
 
     let hook_script = dir.join("hook.sh");
-    fs::write(&hook_script, HOOK_SCRIPT)?;
+    fs::write(&hook_script, with_target_lookup(HOOK_SCRIPT))?;
 
     let hooks_file = dir.join("hooks.json");
     fs::write(
@@ -237,6 +267,7 @@ mod tests {
             .arg(dir.join("hook.sh"))
             .arg(state)
             .env("ARGUS_TTY", &tty)
+            .env("ARGUS_NO_TTY_LOOKUP", "1")
             .stdin(std::process::Stdio::piped())
             .spawn()
             .unwrap();
@@ -293,6 +324,7 @@ mod tests {
             .arg(script)
             .args(extra_args)
             .env("ARGUS_TTY", &fifo)
+            .env("ARGUS_NO_TTY_LOOKUP", "1")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .spawn()
@@ -320,6 +352,62 @@ mod tests {
             &config.join("plugins/argus/argus-hook.sh"),
             &["running"],
         );
+    }
+
+    /// 在真的終端機（PTY）裡跑 hook：燈號要寫到 agent 所在的終端機，而不是 ARGUS_TTY。
+    /// 背景對話被 `claude attach` 接回時，就是靠這個讓訊號轉送到接上的分頁。
+    #[test]
+    fn hook_writes_to_the_agents_own_terminal() {
+        use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+        use std::io::Read;
+
+        let dir = tempfile::tempdir().unwrap();
+        install_to(dir.path()).unwrap();
+        let stale = dir.path().join("stale-tty");
+        fs::write(&stale, "").unwrap();
+
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = CommandBuilder::new("sh");
+        let hook = dir.path().join("hook.sh");
+        cmd.args([
+            "-c",
+            &format!("echo '{{}}' | sh '{}' running", hook.display()),
+        ]);
+        cmd.env("ARGUS_TTY", &stale);
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                out.extend_from_slice(&buf[..n]);
+                if out.windows(4).any(|w| w == b"7777") {
+                    break;
+                }
+            }
+            let _ = tx.send(out);
+        });
+        let out = rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("終端機沒收到燈號訊號");
+        let _ = child.wait();
+        assert!(
+            String::from_utf8_lossy(&out).contains("\x1b]7777;argus;running\x07"),
+            "{out:?}"
+        );
+        assert_eq!(fs::read_to_string(&stale).unwrap(), "", "不該寫到舊的分頁");
     }
 
     #[test]
@@ -403,6 +491,7 @@ mod tests {
             .arg(&script)
             .arg("running")
             .env("ARGUS_TTY", &tty)
+            .env("ARGUS_NO_TTY_LOOKUP", "1")
             .stdin(std::process::Stdio::null())
             .output()
             .unwrap();
