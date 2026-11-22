@@ -5,7 +5,9 @@ describe("detectLang", () => {
   it("系統語言有中文就用繁中，其他用英文", () => {
     expect(detectLang(["zh-TW", "en-US"])).toBe("zh-TW");
     expect(detectLang(["zh-Hant-TW"])).toBe("zh-TW");
-    expect(detectLang(["en-US", "zh-CN"])).toBe("zh-TW");
+    // 依偏好順序：主要語言是英文、次要才是中文時用英文
+    expect(detectLang(["en-US", "zh-Hant-TW"])).toBe("en");
+    expect(detectLang(["ja-JP", "zh-TW", "en"])).toBe("zh-TW");
     expect(detectLang(["en-GB"])).toBe("en");
     expect(detectLang(["ja-JP"])).toBe("en");
     expect(detectLang([])).toBe("en");

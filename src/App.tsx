@@ -41,6 +41,7 @@ interface Workspace {
 const BRANCH_REFRESH_MS = 5000;
 const STALE_CHECK_MS = 2000;
 const DETECT_THROTTLE_MS = 5000;
+const DETECT_RELAXED_MS = 60_000;
 /** detect_apps 偵測的編輯器數量（VS Code、Antigravity） */
 const EDITOR_COUNT = 2;
 const SIDEBAR_KEY = "argus.sidebar";
@@ -123,8 +124,11 @@ export default function App() {
   useEffect(() => {
     let last = 0;
     let complete = false;
+    let hasAgent = false;
     const detect = () => {
-      if (complete || Date.now() - last < DETECT_THROTTLE_MS) return;
+      // 已經有 agent 可用時不急著知道新裝的，拉長間隔省得一直啟動 shell
+      const interval = hasAgent ? DETECT_RELAXED_MS : DETECT_THROTTLE_MS;
+      if (complete || Date.now() - last < interval) return;
       last = Date.now();
       Promise.all([
         invoke<string[]>("detect_agents").then((found) => found.filter(isAgentId)),
@@ -133,6 +137,7 @@ export default function App() {
         .then(([agents, editors]) => {
           setInstalled(agents);
           setApps(editors);
+          hasAgent = agents.length > 0;
           complete = agents.length === AGENT_IDS.length && editors.length === EDITOR_COUNT;
         })
         .catch(() => {});

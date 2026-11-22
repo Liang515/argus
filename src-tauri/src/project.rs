@@ -265,7 +265,7 @@ pub async fn create_worktree(path: String) -> Result<String, String> {
         )
         .is_ok()
     })
-    .ok_or("找不到可用的 worktree 名稱")?;
+    .ok_or("no_worktree_name")?;
     let dir_str = dir.to_string_lossy().into_owned();
     git(&root, &["worktree", "add", "-b", &branch, &dir_str])
         .map_err(|e| format!("worktree_failed: {e}"))?;

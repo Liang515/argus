@@ -1,8 +1,13 @@
-/** 介面語言：系統語言是中文就用繁體中文，其他都用英文。 */
+/** 介面語言：依系統偏好語言的順序，先遇到中文就用繁體中文，先遇到英文或都沒有就用英文。 */
 export type Lang = "zh-TW" | "en";
 
 export function detectLang(languages: readonly string[]): Lang {
-  return languages.some((l) => l.toLowerCase().startsWith("zh")) ? "zh-TW" : "en";
+  for (const l of languages) {
+    const code = l.toLowerCase();
+    if (code.startsWith("zh")) return "zh-TW";
+    if (code.startsWith("en")) return "en";
+  }
+  return "en";
 }
 
 const zh = {
@@ -135,6 +140,7 @@ const zh = {
   "err.read_claude_md": "讀取 CLAUDE.md 失敗：{detail}",
   "err.write_claude_md": "寫入 CLAUDE.md 失敗：{detail}",
   "err.no_home": "找不到家目錄",
+  "err.no_worktree_name": "找不到可用的 worktree 名稱",
 } as const;
 
 export type MessageKey = keyof typeof zh;
@@ -276,6 +282,7 @@ const en: Record<MessageKey, string> = {
   "err.read_claude_md": "Couldn't read CLAUDE.md: {detail}",
   "err.write_claude_md": "Couldn't write CLAUDE.md: {detail}",
   "err.no_home": "Home folder not found",
+  "err.no_worktree_name": "No free worktree name is left",
 };
 
 const MESSAGES: Record<Lang, Record<MessageKey, string>> = { "zh-TW": zh, en };
@@ -286,6 +293,10 @@ function systemLanguages(): readonly string[] {
 }
 
 export const lang: Lang = detectLang(systemLanguages());
+
+// 讓 <html lang> 跟著介面語言（index.html 預設寫的是繁中）
+if (typeof document !== "undefined")
+  document.documentElement.lang = lang === "en" ? "en" : "zh-Hant";
 
 export function format(template: string, vars: Record<string, string | number> = {}): string {
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
