@@ -35,11 +35,14 @@ const PERMISSION_PROMPT =
 
 /**
  * `claude --resume` 遇到已經在背景執行的對話時會拒絕，印出
- * `"…" is running in the background (ad697cee).`；取出對話代碼好改用 `claude attach`。
- * 代碼只接受十六進位，不會把任意輸出當成指令。
+ * `"…" is running in the background (ad697cee). … Run claude attach ad697cee to open it`。
+ * 兩段都要出現、而且是同一個十六進位代碼才算：一般對話內容剛好提到其中一段時不會誤判。
  */
 export function backgroundSessionId(plainText: string): string | null {
-  const match = /is\s+running\s+in\s+the\s+background\s+\(([0-9a-f]{6,16})\)/i.exec(plainText);
+  const match =
+    /is\s+running\s+in\s+the\s+background\s+\(([0-9a-f]{6,16})\)[\s\S]{0,400}?claude\s+attach\s+\1\b/i.exec(
+      plainText,
+    );
   return match ? match[1].toLowerCase() : null;
 }
 

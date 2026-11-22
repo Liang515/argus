@@ -76,7 +76,7 @@ const zh = {
   "app.closeTab": "關閉分頁",
   "app.quitTitle": "結束 Argus",
   "app.quitBusy":
-    "{count} 個分頁還有程式在執行（例如 agent）。結束後，還在工作的 agent 會轉到背景繼續，之後按「接續」就能接回來。要結束 Argus 嗎？",
+    "{count} 個分頁還有程式在執行。結束會關閉這些終端機，執行中的指令會被中斷；Claude Code 的對話之後仍可用「接續」找回。要結束 Argus 嗎？",
   "app.quitOk": "結束",
   "app.cancel": "取消",
   "app.dupSame": "同一個資料夾（共用檔案，適合看 log、跑指令）",
@@ -222,7 +222,7 @@ const en: Record<MessageKey, string> = {
   "app.closeTab": "Close tab",
   "app.quitTitle": "Quit Argus",
   "app.quitBusy":
-    "{count} tab(s) still have something running (such as an agent). Agents that are still working will continue in the background, and Resume brings them back. Quit Argus?",
+    "{count} tab(s) still have something running. Quitting closes these terminals and interrupts running commands; Claude Code conversations can still be resumed later. Quit Argus?",
   "app.quitOk": "Quit",
   "app.cancel": "Cancel",
   "app.dupSame": "Same folder (shared files; good for logs and commands)",

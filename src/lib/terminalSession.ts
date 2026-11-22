@@ -20,8 +20,11 @@ import {
 import { shortcutAction } from "./tabs";
 
 const ENTER_DELAY_MS = 80;
-/** 送出 claude --resume 後留意「背景執行中」訊息的時間 */
-const RESUME_WATCH_MS = 10_000;
+/** 送出 claude --resume 後留意「背景執行中」訊息的時間（包含在清單裡挑對話的時間） */
+const RESUME_WATCH_MS = 120_000;
+/** 偵測到後最多等 shell 回到前景的次數與間隔 */
+const ATTACH_RETRIES = 10;
+const ATTACH_RETRY_MS = 200;
 
 /** 備援偵測保留的尾端文字長度，避免提示字被切在兩批輸出之間。 */
 const FALLBACK_TAIL = 300;
@@ -114,6 +117,8 @@ export class TerminalSession {
       const parsed = parseArgusOsc(data);
       if (parsed) {
         this.hooksSeen = true;
+        // 有 hook 事件代表 Claude 已經在這個分頁跑起來了，不必再等「背景執行中」的訊息
+        this.resumeWatchUntil = 0;
         this.setStatus(parsed.status, parsed.agent);
       }
       return true;
@@ -189,6 +194,21 @@ export class TerminalSession {
   watchResume() {
     this.resumeWatchUntil = Date.now() + RESUME_WATCH_MS;
     this.resumeTail = "";
+  }
+
+  /**
+   * 等 `claude --resume` 退回 shell 再送 `claude attach`。前景還有程式（例如 Claude 正常接上了對話）
+   * 就不送，避免把指令打進正在進行的對話裡。
+   */
+  private async attachWhenShellIsBack(id: string) {
+    for (let i = 0; i < ATTACH_RETRIES; i++) {
+      await new Promise((r) => window.setTimeout(r, ATTACH_RETRY_MS));
+      const busy = await invoke<boolean>("pty_is_busy", { id: this.id }).catch(() => true);
+      if (!busy) {
+        this.run(`claude attach ${id}`);
+        return;
+      }
+    }
   }
 
   /** 記下這個分頁接下來啟動的是哪個 agent（給沒有 hook 的 agent 標燈號用）。 */
@@ -288,7 +308,7 @@ export class TerminalSession {
       if (id) {
         this.resumeWatchUntil = 0;
         this.resumeTail = "";
-        this.run(`claude attach ${id}`);
+        void this.attachWhenShellIsBack(id);
       }
     }
     if (this.hooksSeen) return;

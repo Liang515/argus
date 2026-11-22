@@ -149,21 +149,29 @@ export default function App() {
 
   // ⌘Q 或關視窗：後端先擋下來問這裡。有程式在跑的分頁就確認，否則直接結束
   useEffect(() => {
+    // 對話框開著時又按 ⌘Q 或紅色按鈕，不要再疊一個
+    let asking = false;
     const unlisten = listen("quit-requested", async () => {
-      const ids = latest.current.tabs.map((t) => t.id);
-      const busy = await Promise.all(
-        ids.map((id) => invoke<boolean>("pty_is_busy", { id }).catch(() => false)),
-      );
-      const count = busy.filter(Boolean).length;
-      const ok =
-        count === 0 ||
-        (await ask(t("app.quitBusy", { count }), {
-          title: t("app.quitTitle"),
-          kind: "warning",
-          okLabel: t("app.quitOk"),
-          cancelLabel: t("app.cancel"),
-        }));
-      void invoke(ok ? "confirm_quit" : "cancel_quit");
+      if (asking) return;
+      asking = true;
+      try {
+        const ids = latest.current.tabs.map((tab) => tab.id);
+        const busy = await Promise.all(
+          ids.map((id) => invoke<boolean>("pty_is_busy", { id }).catch(() => false)),
+        );
+        const count = busy.filter(Boolean).length;
+        const ok =
+          count === 0 ||
+          (await ask(t("app.quitBusy", { count }), {
+            title: t("app.quitTitle"),
+            kind: "warning",
+            okLabel: t("app.quitOk"),
+            cancelLabel: t("app.cancel"),
+          }));
+        await invoke(ok ? "confirm_quit" : "cancel_quit");
+      } finally {
+        asking = false;
+      }
     });
     return () => void unlisten.then((f) => f());
   }, []);

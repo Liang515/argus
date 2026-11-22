@@ -39,6 +39,12 @@ impl PtyManager {
         }
     }
 
+    /// 前景有程式（不是 shell 本身）在跑的分頁數，結束 App 前用來決定要不要確認。
+    pub fn busy_count(&self) -> usize {
+        let sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
+        sessions.values().filter(|s| is_busy(s)).count()
+    }
+
     pub fn kill_all(&self) {
         let mut sessions = self.sessions.lock().unwrap_or_else(|e| e.into_inner());
         for (_, mut s) in sessions.drain() {
@@ -263,14 +269,15 @@ pub fn pty_kill(state: State<'_, PtyManager>, id: String) -> Result<(), String> 
 #[tauri::command]
 pub fn pty_is_busy(state: State<'_, PtyManager>, id: String) -> Result<bool, String> {
     let sessions = state.sessions.lock().map_err(|e| e.to_string())?;
-    let Some(session) = sessions.get(&id) else {
-        return Ok(false);
-    };
-    let foreground = session.master.process_group_leader();
-    Ok(match (foreground, session.shell_pid) {
+    Ok(sessions.get(&id).is_some_and(is_busy))
+}
+
+/// 前景行程群組不是 shell，就代表有程式（agent、npm run dev…）在跑。
+fn is_busy(session: &Session) -> bool {
+    match (session.master.process_group_leader(), session.shell_pid) {
         (Some(fg), Some(shell)) => fg as u32 != shell,
         _ => false,
-    })
+    }
 }
 
 #[cfg(test)]

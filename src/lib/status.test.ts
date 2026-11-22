@@ -57,6 +57,14 @@ describe("backgroundSessionId", () => {
       '"Agy 和 Claude 的切換功能" is running in the background (ad697cee).\n\nRun claude attach ad697cee to open it';
     expect(backgroundSessionId(msg)).toBe("ad697cee");
   });
+  it("只出現其中一段、或兩段代碼不同，都不算", () => {
+    expect(backgroundSessionId('"x" is running in the background (ad697cee).')).toBeNull();
+    expect(
+      backgroundSessionId(
+        '"x" is running in the background (ad697cee).\nRun claude attach 12345678 to open it',
+      ),
+    ).toBeNull();
+  });
   it("代碼不是十六進位就不理會，避免把輸出當成指令", () => {
     expect(backgroundSessionId("is running in the background (x; rm -rf ~)")).toBeNull();
     expect(backgroundSessionId("nothing here")).toBeNull();

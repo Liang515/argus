@@ -13,9 +13,15 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
 
 const QUIT_MENU_ID: &str = "argus-quit";
 
-/// ⌘Q（選單的 Quit）、關視窗、系統要求結束都走這裡：需要確認就交給前端，否則直接結束。
+/// 有分頁在忙、而且這次還沒問過，才需要前端確認；沒有分頁在忙就直接結束，
+/// 前端卡住或系統關機時也不會被擋。
+fn needs_confirmation<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.state::<pty::PtyManager>().busy_count() > 0 && app.state::<QuitGate>().should_ask()
+}
+
+/// ⌘Q（選單的 Quit）：需要確認就交給前端，否則直接結束。
 fn request_quit<R: Runtime>(app: &AppHandle<R>) {
-    if app.state::<QuitGate>().should_ask() {
+    if needs_confirmation(app) {
         let _ = app.emit("quit-requested", ());
     } else {
         app.exit(0);
@@ -168,7 +174,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             // 點紅色按鈕關視窗＝結束 App，一樣先讓前端確認
             if let WindowEvent::CloseRequested { api, .. } = event
-                && window.app_handle().state::<QuitGate>().should_ask()
+                && needs_confirmation(window.app_handle())
             {
                 api.prevent_close();
                 let _ = window.emit("quit-requested", ());
@@ -180,7 +186,7 @@ pub fn run() {
             // code 是 None 代表使用者按 ⌘Q（不是 confirm_quit 呼叫的 app.exit）
             RunEvent::ExitRequested {
                 code: None, api, ..
-            } if app.state::<QuitGate>().should_ask() => {
+            } if needs_confirmation(app) => {
                 api.prevent_exit();
                 let _ = app.emit("quit-requested", ());
             }
