@@ -2,6 +2,7 @@ import { Clock, CornerDownLeft, FolderOpen, FolderSearch, GitBranch, Zap } from 
 import { useMemo, useState } from "react";
 import type { AgentId } from "../lib/agents";
 import { rank } from "../lib/fuzzy";
+import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
 import { type Tab, tabName } from "../lib/tabs";
 
@@ -100,7 +101,7 @@ export function CommandPalette({
     else if (item.kind === "browse") onBrowse();
     else if (item.kind === "action") item.action.run();
     else if (!(await onOpenPath(item.path))) {
-      setError(`找不到資料夾：${item.path}`);
+      setError(t("palette.folderMissing", { path: item.path }));
       return;
     }
     onClose();
@@ -141,7 +142,7 @@ export function CommandPalette({
             setError(null);
           }}
           onKeyDown={onKeyDown}
-          placeholder={only?.placeholder ?? "搜尋專案或動作，或輸入路徑（~/…）開新分頁"}
+          placeholder={only?.placeholder ?? t("palette.placeholder")}
           className="w-full border-b border-deck-border bg-transparent px-4 py-3 text-[14px] text-deck-text outline-none placeholder:text-deck-muted"
           spellCheck={false}
           autoCorrect="off"
@@ -172,10 +173,10 @@ export function CommandPalette({
           ))}
         </ul>
         <footer className="flex gap-4 border-t border-deck-border px-4 py-2 text-[11px] text-deck-muted">
-          <span>↑↓ 選擇</span>
-          <span>↵ 開啟</span>
-          <span>esc 關閉</span>
-          <span className="ml-auto">⌘/ 所有快捷鍵</span>
+          <span>{t("palette.hintSelect")}</span>
+          <span>{t("palette.hintOpen")}</span>
+          <span>{t("palette.hintClose")}</span>
+          <span className="ml-auto">{t("palette.hintAll")}</span>
         </footer>
       </div>
     </div>
@@ -206,7 +207,7 @@ function ItemRow({
     return (
       <>
         <FolderSearch size={15} className="shrink-0" />
-        <span className="flex-1">瀏覽其他資料夾…</span>
+        <span className="flex-1">{t("palette.browse")}</span>
         <kbd className="text-[11px]">⌘T</kbd>
       </>
     );
@@ -224,7 +225,7 @@ function ItemRow({
     return (
       <>
         <FolderOpen size={15} className="shrink-0" />
-        <span className="flex-1 truncate">開啟 {item.path}</span>
+        <span className="flex-1 truncate">{t("palette.openPath", { path: item.path })}</span>
       </>
     );
   }

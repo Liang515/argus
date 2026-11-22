@@ -134,7 +134,9 @@ pub fn pty_spawn(
     cols: u16,
     rows: u16,
     on_data: Channel<InvokeResponseBody>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
+    // 資料夾不見了（例如改名）會退回家目錄開啟，回傳 true 讓前端提示使用者
+    let cwd_missing = !Path::new(&cwd).is_dir();
     let pair = native_pty_system()
         .openpty(PtySize {
             rows,
@@ -210,7 +212,7 @@ pub fn pty_spawn(
         let _ = app.emit("pty-exit", PtyExit { id });
     });
 
-    Ok(())
+    Ok(cwd_missing)
 }
 
 #[tauri::command]

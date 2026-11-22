@@ -2,6 +2,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Check, ChevronDown, Download, History, Plus, Terminal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AGENT_IDS, AGENTS, type AgentId, type AgentIntent, buttonMode } from "../lib/agents";
+import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
 
 interface Props {
@@ -29,19 +30,19 @@ export function AgentButtons({ status, running, preferred, installed, onAction }
           type="button"
           onClick={() => onAction("new")}
           className={`${BUTTON} text-deck-text`}
-          title="清掉目前對話，重新開始（/clear；舊對話之後還能用「切換對話」找回）"
+          title={t("agent.newChatTitle")}
         >
           <Plus size={13} className="text-deck-accent" />
-          新對話
+          {t("agent.newChat")}
         </button>
         <button
           type="button"
           onClick={() => onAction("resume")}
           className={`${BUTTON} text-deck-muted hover:text-deck-text`}
-          title="切換到這個專案的其他 Claude 對話（/resume）"
+          title={t("agent.switchTitle")}
         >
           <History size={13} />
-          切換對話
+          {t("agent.switch")}
         </button>
         <NewTabMenu installed={installed} onPick={(agent) => onAction("new", agent)} />
       </div>
@@ -66,9 +67,9 @@ export function AgentButtons({ status, running, preferred, installed, onAction }
       <div className="flex shrink-0 items-center">
         <AgentMenu
           installed={installed}
-          footer="裝好後切回 Argus，這裡就能直接啟動"
-          triggerTitle="還沒安裝任何 agent，看看怎麼安裝"
-          triggerLabel="安裝 agent"
+          footer={t("agent.installFooter")}
+          triggerTitle={t("agent.installTitle")}
+          triggerLabel={t("agent.install")}
           onPick={(agent) => onAction("new", agent)}
         />
       </div>
@@ -83,7 +84,7 @@ export function AgentButtons({ status, running, preferred, installed, onAction }
           type="button"
           onClick={() => onAction("new", preferred)}
           className={`${BUTTON} rounded-r-none pr-1.5 text-deck-text`}
-          title={`在這個分頁啟動 ${label}（${AGENTS[preferred].start}）`}
+          title={t("agent.startTitle", { agent: label, cmd: AGENTS[preferred].start })}
         >
           <Terminal size={13} className="text-deck-accent" />
           {label}
@@ -91,9 +92,9 @@ export function AgentButtons({ status, running, preferred, installed, onAction }
         <AgentMenu
           installed={installed}
           checked={preferred}
-          footer="選過的會變成這個分頁的預設"
+          footer={t("agent.defaultFooter")}
           triggerClass="rounded-l-none"
-          triggerTitle="選擇其他 agent"
+          triggerTitle={t("agent.pickOther")}
           onPick={(agent) => onAction("new", agent)}
         />
       </div>
@@ -101,10 +102,10 @@ export function AgentButtons({ status, running, preferred, installed, onAction }
         type="button"
         onClick={() => onAction("resume", preferred)}
         className={`${BUTTON} text-deck-muted hover:text-deck-text`}
-        title={`從過去的 ${label} 對話挑一個接續（${AGENTS[preferred].resume}）`}
+        title={t("agent.resumeTitle", { agent: label, cmd: AGENTS[preferred].resume })}
       >
         <History size={13} />
-        接續
+        {t("agent.resume")}
       </button>
     </div>
   );
@@ -120,8 +121,8 @@ function NewTabMenu({
   return (
     <AgentMenu
       installed={installed}
-      footer="在同資料夾的新分頁開，不影響這個分頁"
-      triggerTitle="在新分頁開其他 agent"
+      footer={t("agent.newTabFooter")}
+      triggerTitle={t("agent.newTabTitle")}
       onPick={onPick}
     />
   );
@@ -206,7 +207,7 @@ function AgentMenu({
                   else void openUrl(AGENTS[agent].install);
                 }}
                 title={
-                  ready ? undefined : `還沒安裝 ${AGENTS[agent].label}，點一下打開官方安裝說明`
+                  ready ? undefined : t("agent.notInstalledTitle", { agent: AGENTS[agent].label })
                 }
                 className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] text-deck-text hover:bg-deck-hover"
               >
@@ -221,7 +222,7 @@ function AgentMenu({
                 ) : (
                   <span className="flex items-center gap-1 text-[11px] text-deck-accent">
                     <Download size={11} />
-                    未安裝
+                    {t("agent.notInstalled")}
                   </span>
                 )}
               </button>

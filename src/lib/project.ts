@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
+import { t, translateError } from "./i18n";
 
 export interface GitChange {
   code: string;
@@ -63,8 +64,8 @@ export async function openIn(path: string, target: OpenTarget) {
   try {
     await invoke("open_in", { path, target });
   } catch (err) {
-    await message(`無法用 ${OPEN_TARGET_LABEL[target]} 開啟：${String(err)}`, {
-      title: "開啟失敗",
+    await message(t("open.failed", { app: OPEN_TARGET_LABEL[target], err: translateError(err) }), {
+      title: t("open.failedTitle"),
       kind: "error",
     });
   }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { t } from "./i18n";
 import { looksLikePermissionPrompt, parseArgusOsc, statusLabel, stripAnsi } from "./status";
 
 describe("parseArgusOsc", () => {
@@ -20,8 +21,9 @@ describe("parseArgusOsc", () => {
 
 describe("statusLabel", () => {
   it("顯示 agent 名稱與狀態", () => {
-    expect(statusLabel("running", "agy")).toBe("agy 執行中");
-    expect(statusLabel("needs-input", "claude")).toBe("Claude 等待你確認");
+    // 介面語言跟著系統，所以用目前語言的文字比對
+    expect(statusLabel("running", "agy")).toBe(`agy ${t("status.running")}`);
+    expect(statusLabel("needs-input", "claude")).toBe(`Claude ${t("status.needsInput")}`);
     expect(statusLabel("off", "claude")).toBe("");
   });
 });

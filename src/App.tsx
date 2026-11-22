@@ -9,6 +9,7 @@ import { ShortcutHelp } from "./components/ShortcutHelp";
 import { Sidebar } from "./components/Sidebar";
 import { TabBar } from "./components/TabBar";
 import {
+  AGENT_IDS,
   AGENTS,
   type AgentId,
   type AgentIntent,
@@ -18,6 +19,7 @@ import {
   preferredAgent,
 } from "./lib/agents";
 import { pushRecent } from "./lib/fuzzy";
+import { t, translateError } from "./lib/i18n";
 import { isAppAvailable, OPEN_TARGET_LABEL, type OpenTarget, openIn } from "./lib/project";
 import type { ClaudeStatus } from "./lib/status";
 import {
@@ -39,6 +41,8 @@ interface Workspace {
 const BRANCH_REFRESH_MS = 5000;
 const STALE_CHECK_MS = 2000;
 const DETECT_THROTTLE_MS = 5000;
+/** detect_apps 偵測的編輯器數量（VS Code、Antigravity） */
+const EDITOR_COUNT = 2;
 const SIDEBAR_KEY = "argus.sidebar";
 
 function loadSidebarPref() {
@@ -114,17 +118,23 @@ export default function App() {
     invoke("workspace_save", { workspace: { tabs, activeId, recent } }).catch(() => {});
   }, [tabs, activeId, recent, loaded]);
 
-  // 偵測裝了哪些 agent 與編輯器。切回視窗時重新偵測，照著提示裝好後回來就能直接用
+  // 偵測裝了哪些 agent 與編輯器。切回視窗時重新偵測，照著提示裝好後回來就能直接用；
+  // 全部都裝了就不再偵測（偵測要啟動一次使用者的 shell）
   useEffect(() => {
     let last = 0;
+    let complete = false;
     const detect = () => {
-      if (Date.now() - last < DETECT_THROTTLE_MS) return;
+      if (complete || Date.now() - last < DETECT_THROTTLE_MS) return;
       last = Date.now();
-      invoke<string[]>("detect_agents")
-        .then((found) => setInstalled(found.filter(isAgentId)))
-        .catch(() => {});
-      invoke<OpenTarget[]>("detect_apps")
-        .then(setApps)
+      Promise.all([
+        invoke<string[]>("detect_agents").then((found) => found.filter(isAgentId)),
+        invoke<OpenTarget[]>("detect_apps"),
+      ])
+        .then(([agents, editors]) => {
+          setInstalled(agents);
+          setApps(editors);
+          complete = agents.length === AGENT_IDS.length && editors.length === EDITOR_COUNT;
+        })
         .catch(() => {});
     };
     detect();
@@ -255,7 +265,7 @@ export default function App() {
   }, []);
 
   const addTab = useCallback(async () => {
-    const dir = await open({ directory: true, multiple: false, title: "選擇專案資料夾" });
+    const dir = await open({ directory: true, multiple: false, title: t("app.pickFolder") });
     if (typeof dir === "string") openDir(dir);
   }, [openDir]);
 
@@ -291,7 +301,7 @@ export default function App() {
         try {
           path = await invoke<string>("create_worktree", { path: source.path });
         } catch (err) {
-          await message(String(err), { title: "無法建立 worktree", kind: "error" });
+          await message(translateError(err), { title: t("app.worktreeFailed"), kind: "error" });
           return;
         }
         setRecent((prev) => pushRecent(prev, path));
@@ -314,8 +324,8 @@ export default function App() {
     const busy = await invoke<boolean>("pty_is_busy", { id }).catch(() => false);
     if (
       busy &&
-      !(await ask("這個分頁還有程式在執行（例如 claude），確定要關閉嗎？", {
-        title: "關閉分頁",
+      !(await ask(t("app.closeBusy"), {
+        title: t("app.closeTab"),
         kind: "warning",
       }))
     ) {
@@ -353,11 +363,14 @@ export default function App() {
         if (chosen && tab.agent !== chosen) {
           setTabs((prev) => prev.map((t) => (t.id === active ? { ...t, agent: chosen } : t)));
         }
+        session.launched(chosen ?? preferred);
         session.run(step.command);
       } else if (step.kind === "agent") session.run(step.command);
       else if (step.kind === "new-tab") {
         const created = insertTabAfter(tab, tab.path, step.agent);
-        sessionFor(created).runWhenReady(step.command);
+        const target = sessionFor(created);
+        target.launched(step.agent);
+        target.runWhenReady(step.command);
       } else session.focus();
     },
     [sessionFor, insertTabAfter],
@@ -408,12 +421,12 @@ export default function App() {
     () => [
       {
         id: "dup-same",
-        label: "同一個資料夾（共用檔案，適合看 log、跑指令）",
+        label: t("app.dupSame"),
         run: () => void duplicateTab("same"),
       },
       {
         id: "dup-worktree",
-        label: "新的 git worktree（獨立資料夾與分支，兩個 Claude 不會互相覆蓋）",
+        label: t("app.dupWorktree"),
         run: () => void duplicateTab("worktree"),
       },
     ],
@@ -424,18 +437,18 @@ export default function App() {
     const list: PaletteAction[] = [
       {
         id: "sidebar",
-        label: sidebarOpen ? "隱藏側欄" : "顯示側欄",
+        label: sidebarOpen ? t("app.hideSidebar") : t("app.showSidebar"),
         hint: "⌘B",
         run: () => setSidebarOpen((o) => !o),
       },
-      { id: "help", label: "鍵盤快捷鍵說明", hint: "⌘/", run: () => setHelpOpen(true) },
+      { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => setHelpOpen(true) },
     ];
     if (activeTab) {
       for (const target of ["vscode", "antigravity", "finder"] as OpenTarget[]) {
         if (!isAppAvailable(target, apps)) continue;
         list.push({
           id: `open-${target}`,
-          label: `用 ${OPEN_TARGET_LABEL[target]} 開啟目前專案`,
+          label: t("app.openIn", { app: OPEN_TARGET_LABEL[target] }),
           run: () => void openIn(activeTab.path, target),
         });
       }
@@ -446,12 +459,12 @@ export default function App() {
           list.push(
             {
               id: `start-${agent}`,
-              label: `執行 ${label}（${start}）`,
+              label: t("app.run", { agent: label, cmd: start }),
               run: () => void agentAction("new", agent),
             },
             {
               id: `resume-${agent}`,
-              label: `接續過去的 ${label} 對話（${resume}）`,
+              label: t("app.resumePast", { agent: label, cmd: resume }),
               run: () => void agentAction("resume", agent),
             },
           );
@@ -461,12 +474,12 @@ export default function App() {
           list.push(
             {
               id: "claude-new",
-              label: "Claude 新對話（/clear）",
+              label: t("app.claudeNew"),
               run: () => void agentAction("new"),
             },
             {
               id: "claude-resume",
-              label: "切換 Claude 對話（/resume）",
+              label: t("app.claudeSwitch"),
               run: () => void agentAction("resume"),
             },
           );
@@ -475,17 +488,20 @@ export default function App() {
           const { label, start } = AGENTS[agent];
           list.push({
             id: `new-tab-${agent}`,
-            label: `在新分頁執行 ${label}（${start}）`,
+            label: t("app.runInNewTab", { agent: label, cmd: start }),
             run: () => void agentAction("new", agent),
           });
         }
       }
-      list.push(...duplicateActions.map((a) => ({ ...a, label: `再開一個分頁：${a.label}` })), {
-        id: "close-tab",
-        label: "關閉目前分頁",
-        hint: "⌘W",
-        run: () => void closeTab(activeTab.id),
-      });
+      list.push(
+        ...duplicateActions.map((a) => ({ ...a, label: t("app.anotherTab", { label: a.label }) })),
+        {
+          id: "close-tab",
+          label: t("app.closeCurrent"),
+          hint: "⌘W",
+          run: () => void closeTab(activeTab.id),
+        },
+      );
     }
     return list;
   }, [
@@ -526,21 +542,21 @@ export default function App() {
           ))}
           {loaded && tabs.length === 0 && (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-deck-muted">
-              <p className="text-sm">開啟一個專案資料夾開始工作</p>
+              <p className="text-sm">{t("app.emptyTitle")}</p>
               <button
                 type="button"
                 onClick={() => void addTab()}
                 className="flex items-center gap-2 rounded-lg border border-deck-border bg-deck-panel px-4 py-2 text-sm text-deck-text hover:bg-deck-hover"
               >
                 <FolderOpen size={16} />
-                開啟專案資料夾
+                {t("app.openFolder")}
                 <kbd className="ml-1 text-xs text-deck-muted">⌘T</kbd>
               </button>
               <dl className="mt-2 grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-xs">
                 {[
-                  ["⌘K", "搜尋、切換專案"],
-                  ["⌘B", "開關右側看板"],
-                  ["⌘/", "所有快捷鍵"],
+                  ["⌘K", t("app.emptySearch")],
+                  ["⌘B", t("app.emptySidebar")],
+                  ["⌘/", t("app.emptyAll")],
                 ].map(([keys, desc]) => (
                   <div key={keys} className="contents">
                     <dt className="text-right font-mono text-deck-text">{keys}</dt>
@@ -561,7 +577,7 @@ export default function App() {
           labels={labels}
           only={
             palette === "duplicate"
-              ? { placeholder: "在目前專案再開一個分頁…", actions: duplicateActions }
+              ? { placeholder: t("app.dupPlaceholder"), actions: duplicateActions }
               : undefined
           }
           recent={recent}

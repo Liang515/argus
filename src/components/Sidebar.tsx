@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { lang, t, translateError } from "../lib/i18n";
 import {
   changeBadge,
   type GitChange,
@@ -127,9 +128,7 @@ export function Sidebar({ tab, status, apps }: Props) {
                 else if (install) void openUrl(install);
               }}
               title={
-                ready
-                  ? `用 ${label} 開啟這個專案`
-                  : `還沒安裝 ${label}。點一下打開下載頁，裝好後切回 Argus 就能一鍵開啟專案`
+                ready ? t("side.openWith", { app: label }) : t("side.notInstalled", { app: label })
               }
               className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 hover:bg-deck-hover hover:text-deck-text ${ready ? "text-deck-muted" : "text-deck-muted/50"}`}
             >
@@ -142,10 +141,13 @@ export function Sidebar({ tab, status, apps }: Props) {
 
       <section className="flex max-h-[40%] min-h-0 flex-col border-b border-deck-border">
         <header className="flex items-center justify-between px-3 py-2 text-[11px] font-semibold tracking-wide text-deck-muted uppercase">
-          <span>Git 變更{changes ? ` · ${changes.length}` : ""}</span>
+          <span>
+            {t("side.gitChanges")}
+            {changes ? ` · ${changes.length}` : ""}
+          </span>
           <button
             type="button"
-            aria-label="重新整理 git 變更"
+            aria-label={t("side.refreshGit")}
             onClick={() => void refreshGit()}
             className="rounded p-1 hover:bg-deck-hover hover:text-deck-text"
           >
@@ -153,9 +155,11 @@ export function Sidebar({ tab, status, apps }: Props) {
           </button>
         </header>
         <ul className="min-h-0 overflow-y-auto px-1.5 pb-2">
-          {changes === undefined && <li className="px-1.5 text-deck-muted">讀取中…</li>}
-          {changes === null && <li className="px-1.5 text-deck-muted">不是 git repo</li>}
-          {changes?.length === 0 && <li className="px-1.5 text-deck-muted">沒有未提交的變更</li>}
+          {changes === undefined && <li className="px-1.5 text-deck-muted">{t("side.loading")}</li>}
+          {changes === null && <li className="px-1.5 text-deck-muted">{t("side.notRepo")}</li>}
+          {changes?.length === 0 && (
+            <li className="px-1.5 text-deck-muted">{t("side.noChanges")}</li>
+          )}
           {changes?.map((c) => {
             const badge = changeBadge(c.code);
             const { dir, name } = splitPath(c.path);
@@ -186,22 +190,20 @@ export function Sidebar({ tab, status, apps }: Props) {
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 select-text">
           {needsHandoffProtocol(doc) && (
             <div className="mb-3 rounded-md border border-deck-border bg-deck-bg p-2.5 select-none">
-              <p className="text-deck-muted">
-                讓 agent 每做完一段就把進度寫進 HANDOFF.md，這裡會即時顯示，換人或換 agent
-                接手也不會斷。
-              </p>
+              <p className="text-deck-muted">{t("side.handoffPitch")}</p>
               <button
                 type="button"
                 onClick={() => {
                   setAddError(null);
-                  invoke("add_handoff_protocol", { path })
+                  invoke("add_handoff_protocol", { path, lang })
                     .then(() => refreshDoc())
-                    .catch((e) => setAddError(String(e)));
+                    .catch((e) => setAddError(translateError(e)));
                 }}
-                title="在專案根目錄的 CLAUDE.md 加上交接規則（沒有就建立），下次開對話時生效"
+                title={t("side.handoffTitle")}
                 className="mt-2 flex items-center gap-1.5 rounded-md bg-deck-hover px-2.5 py-1 text-deck-text hover:bg-deck-border"
               >
-                <NotebookPen size={13} className="text-deck-accent" />在 CLAUDE.md 加入交接規則
+                <NotebookPen size={13} className="text-deck-accent" />
+                {t("side.handoffButton")}
               </button>
               {addError && <p className="mt-1.5 text-status-alert">{addError}</p>}
             </div>
@@ -223,14 +225,18 @@ export function Sidebar({ tab, status, apps }: Props) {
                     </a>
                   ),
                   // 本機相對路徑的圖片在 webview 讀不到，只顯示替代文字
-                  img: ({ alt }) => <span className="text-deck-muted">[圖片：{alt}]</span>,
+                  img: ({ alt }) => (
+                    <span className="text-deck-muted">
+                      {t("side.image", { alt: String(alt ?? "") })}
+                    </span>
+                  ),
                 }}
               >
                 {doc.content}
               </Markdown>
             </article>
           ) : (
-            <p className="text-deck-muted">專案根目錄還沒有 HANDOFF.md 或 CLAUDE.md。</p>
+            <p className="text-deck-muted">{t("side.noDoc")}</p>
           )}
         </div>
       </section>

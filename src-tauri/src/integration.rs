@@ -117,7 +117,9 @@ ZDOTDIR="$_argus_zdotdir"
     let zshrc = format!(
         r#"{}
 # 在 Argus 裡執行 claude 時自動帶上狀態回報 hooks
-claude() {{ command claude --settings "$ARGUS_HOOKS" "$@"; }}
+# 使用者若有 alias claude=…，`claude()` 會被 alias 展開而定義失敗，hook 就默默沒套上
+unalias claude 2>/dev/null
+function claude {{ command claude --settings "$ARGUS_HOOKS" "$@"; }}
 "#,
         zsh_passthrough(".zshrc")
     );
@@ -344,7 +346,12 @@ mod tests {
         let integration = install_to(&dir.path().join("argus")).unwrap();
         let user_home = dir.path().join("home");
         fs::create_dir_all(&user_home).unwrap();
-        fs::write(user_home.join(".zshrc"), "export FROM_USER_RC=yes\n").unwrap();
+        // 使用者自己的 alias 不能擋掉 Argus 的 claude 函式
+        fs::write(
+            user_home.join(".zshrc"),
+            "export FROM_USER_RC=yes\nalias claude='echo from-alias'\n",
+        )
+        .unwrap();
 
         let out = Command::new("/bin/zsh")
             .args(["-l", "-i", "-c"])

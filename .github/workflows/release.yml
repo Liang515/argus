@@ -15,6 +15,9 @@ permissions:
 jobs:
   macos:
     runs-on: macos-latest
+    env:
+      # secrets 不能直接用在 if 條件，先轉成旗標
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,6 +54,16 @@ jobs:
             下載 `.dmg`，把 Argus 拖進「應用程式」即可。
             Download the `.dmg` and drag Argus into Applications.
           releaseDraft: true
+
+      # 有設 Apple 憑證卻沒簽好或沒公證（例如密碼過期）時讓這次 release 失敗，
+      # 避免默默發出要「強制打開」的版本、和 README 不符。release 是草稿，失敗時不會公開。
+      - name: Verify signature and notarization
+        if: env.HAS_APPLE_CERT == 'true'
+        run: |
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/Argus.app
+          codesign --verify --deep --strict "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute -vv "$APP"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -4,8 +4,6 @@
 
 A terminal workspace for coding agents on macOS. Keep every project in its own tab, run Claude Code, Antigravity CLI (`agy`) or Codex in it, and see at a glance which agent is working, which one is waiting for you, and which one is done.
 
-Named after Argus Panoptes, the hundred-eyed giant who never slept with all eyes closed.
-
 ## Features
 
 - **Status lights on every tab**: running (pulsing yellow), waiting for your confirmation (red), done (green). You don't need to switch tabs to know who needs you.
@@ -17,6 +15,17 @@ Named after Argus Panoptes, the hundred-eyed giant who never slept with all eyes
 - **⌘-click file paths in the terminal**: code and text files open in VS Code or Antigravity at the right line (`src/App.tsx:313`), other files in their default app. ⌘⌥-click reveals the file in Finder. Apps, scripts and installers are never run from a click.
 - **macOS editing keys in the terminal**: ⌘← / ⌘→ for line start/end, ⌥← / ⌥→ by word, ⌘⌫ to delete to line start, ⇧↩ for a newline in Claude Code.
 - **Keyboard first**: ⌘K project and action switcher, ⌘1–9 to jump to a tab, ⌘/ for all shortcuts.
+
+## Agent support
+
+|                                 | Claude Code | agy | Codex                          |
+| ------------------------------- | ----------- | --- | ------------------------------ |
+| Start / resume from the tab bar | ✓           | ✓   | ✓                              |
+| Running and done lights         | ✓           | ✓   | –                              |
+| Waiting-for-you light           | ✓           | –   | best effort (from screen text) |
+| New chat / switch chat buttons  | ✓           | –   | –                              |
+
+The interface follows your macOS language: Traditional Chinese or English.
 
 ## Install
 

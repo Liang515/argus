@@ -9,8 +9,8 @@ use serde::Serialize;
 /// 一行裡最多檢查幾個候選路徑，避免很長的輸出造成大量檔案系統查詢。
 const MAX_CANDIDATES: usize = 64;
 
-/// 點了會執行程式的檔案類型：一律改成在 Finder 顯示，不直接打開。
-const RUNNABLE_EXTENSIONS: [&str; 16] = [
+/// 點了會執行、安裝或自動開網址的檔案類型：一律改成在 Finder 顯示，不直接打開。
+const RUNNABLE_EXTENSIONS: [&str; 22] = [
     "app",
     "command",
     "tool",
@@ -27,6 +27,12 @@ const RUNNABLE_EXTENSIONS: [&str; 16] = [
     "prefpane",
     "mobileconfig",
     "action",
+    "dmg",
+    "webloc",
+    "inetloc",
+    "applescript",
+    "scptd",
+    "appex",
 ];
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -203,8 +209,10 @@ pub async fn open_path(
     line: Option<u32>,
     column: Option<u32>,
 ) -> Result<(), String> {
-    let target = Path::new(&path);
-    let meta = fs::metadata(target).map_err(|_| "檔案不存在".to_string())?;
+    // 先解開符號連結：名為 pic.png 卻指向某個 .app 的連結，要用實際的目標判斷
+    let real = fs::canonicalize(&path).map_err(|_| "file_missing".to_string())?;
+    let target = real.as_path();
+    let meta = fs::metadata(target).map_err(|_| "file_missing".to_string())?;
     let editor = if !reveal && !meta.is_dir() && is_text_file(target) {
         installed_editor()
     } else {
@@ -220,7 +228,7 @@ pub async fn open_path(
     if status.success() {
         Ok(())
     } else {
-        Err("無法開啟".into())
+        Err("open_failed".into())
     }
 }
 
@@ -383,5 +391,27 @@ mod tests {
             ),
             OpenAction::Reveal
         );
+    }
+
+    #[test]
+    fn symlinks_are_judged_by_their_real_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("Evil.app");
+        fs::create_dir_all(&app).unwrap();
+        let disguised = dir.path().join("pic.png");
+        std::os::unix::fs::symlink(&app, &disguised).unwrap();
+        // 只看連結本身會被當成圖片直接打開
+        assert_eq!(
+            decide(&disguised, true, false, None, None, None),
+            OpenAction::OpenDefault
+        );
+        // open_path 用的是解開後的實際路徑
+        let real = fs::canonicalize(&disguised).unwrap();
+        assert_eq!(
+            decide(&real, true, false, None, None, None),
+            OpenAction::Reveal
+        );
+        assert!(is_runnable(Path::new("/tmp/Installer.dmg")));
+        assert!(is_runnable(Path::new("/tmp/site.webloc")));
     }
 }

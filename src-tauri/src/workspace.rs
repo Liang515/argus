@@ -29,7 +29,7 @@ pub struct Workspace {
 fn workspace_file() -> Result<PathBuf, String> {
     dirs::home_dir()
         .map(|h| h.join(".argus").join("workspaces.json"))
-        .ok_or_else(|| "找不到家目錄".to_string())
+        .ok_or_else(|| "no_home".to_string())
 }
 
 /// 檔案不存在或內容壞掉時回傳空工作區，不讓 App 開不起來。

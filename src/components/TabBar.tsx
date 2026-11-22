@@ -1,6 +1,7 @@
 import { GitBranch, Keyboard, Plus, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
+import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
 import { dropIndex, type Tab } from "../lib/tabs";
 import { AgentButtons } from "./AgentButtons";
@@ -140,7 +141,7 @@ export function TabBar({
                   ? "bg-deck-hover text-deck-text shadow-[inset_0_0_0_1px_var(--color-deck-border)]"
                   : "text-deck-muted hover:bg-deck-hover/60 hover:text-deck-text"
               }`}
-              title={`${tab.path}${i < 9 ? `  (⌘${i + 1})` : ""}\n拖曳可調整順序（⌘⇧← →）`}
+              title={`${tab.path}${i < 9 ? `  (⌘${i + 1})` : ""}\n${t("tab.dragHint")}`}
             >
               <button
                 type="button"
@@ -168,7 +169,7 @@ export function TabBar({
               </button>
               <button
                 type="button"
-                aria-label="關閉分頁"
+                aria-label={t("tab.close")}
                 onClick={() => onClose(tab.id)}
                 className={`mr-1 rounded p-0.5 hover:bg-deck-border ${active ? "opacity-70" : "opacity-0 group-hover:opacity-70"}`}
               >
@@ -179,8 +180,8 @@ export function TabBar({
         })}
         <button
           type="button"
-          aria-label="新增專案分頁"
-          title="開啟專案資料夾 (⌘T)"
+          aria-label={t("tab.add")}
+          title={t("tab.addTitle")}
           onClick={onAdd}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-deck-muted hover:bg-deck-hover hover:text-deck-text"
         >
@@ -198,8 +199,8 @@ export function TabBar({
       )}
       <button
         type="button"
-        aria-label="鍵盤快捷鍵"
-        title="鍵盤快捷鍵 (⌘/)"
+        aria-label={t("tab.shortcuts")}
+        title={t("tab.shortcutsTitle")}
         onClick={onHelp}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-deck-muted hover:bg-deck-hover hover:text-deck-text"
       >

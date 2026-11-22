@@ -1,51 +1,56 @@
 import { useEffect, useRef } from "react";
+import { lang, t } from "../lib/i18n";
 
 const GROUPS: { title: string; items: [string, string][] }[] = [
   {
-    title: "分頁",
+    title: t("help.tabs"),
     items: [
-      ["⌘T", "開啟專案資料夾"],
-      ["⌘⇧T", "在目前專案再開一個分頁（同資料夾或 worktree）"],
-      ["⌘W", "關閉分頁（有程式在跑會先問）"],
-      ["⌘1 – ⌘8", "跳到第 N 個分頁"],
-      ["⌘9", "跳到最後一個分頁"],
-      ["⌘⇧[  ⌘⇧]", "上一個／下一個分頁"],
-      ["⌘⇧←  ⌘⇧→", "把目前分頁往左／往右移（也可以用滑鼠拖曳）"],
+      ["⌘T", t("help.tabs.open")],
+      ["⌘⇧T", t("help.tabs.duplicate")],
+      ["⌘W", t("help.tabs.close")],
+      ["⌘1 – ⌘8", t("help.tabs.jump")],
+      ["⌘9", t("help.tabs.last")],
+      ["⌘⇧[  ⌘⇧]", t("help.tabs.prevNext")],
+      ["⌘⇧←  ⌘⇧→", t("help.tabs.move")],
     ],
   },
   {
-    title: "切換與面板",
+    title: t("help.panels"),
     items: [
-      ["⌘K 或 ⌘P", "切換器：搜尋專案、動作，或輸入路徑開新分頁"],
-      ["⌘B", "開關右側看板"],
-      ["⌘/", "顯示這份快捷鍵說明"],
+      [lang === "en" ? "⌘K or ⌘P" : "⌘K 或 ⌘P", t("help.panels.palette")],
+      ["⌘B", t("help.panels.sidebar")],
+      ["⌘/", t("help.panels.help")],
     ],
   },
   {
-    title: "切換器裡",
+    title: t("help.palette"),
     items: [
-      ["↑ ↓ 或 ⌃N ⌃P", "選擇"],
-      ["↵", "開啟"],
-      ["esc", "關閉"],
+      [lang === "en" ? "↑ ↓ or ⌃N ⌃P" : "↑ ↓ 或 ⌃N ⌃P", t("help.palette.select")],
+      ["↵", t("help.palette.open")],
+      ["esc", t("help.palette.close")],
     ],
   },
   {
-    title: "輸入時",
+    title: t("help.typing"),
     items: [
-      ["⌘←  ⌘→", "移到行首／行尾"],
-      ["⌥←  ⌥→", "往左／往右跳一個字"],
-      ["⌘⌫", "刪除游標前的整行"],
-      ["⌘A", "全選終端機內容（可接著 ⌘C 複製）"],
-      ["⌘＋點擊路徑", "開啟檔案：程式碼用 VS Code／Antigravity 並跳到行號，資料夾開在 Finder"],
-      ["⌘⌥＋點擊路徑", "在 Finder 顯示並選取"],
+      ["⌘←  ⌘→", t("help.typing.lineEnds")],
+      ["⌥←  ⌥→", t("help.typing.words")],
+      ["⌘⌫", t("help.typing.deleteLine")],
+      ["⌘A", t("help.typing.selectAll")],
+      ["⇧↵", t("help.typing.newline")],
     ],
   },
   {
-    title: "Claude",
+    title: t("help.links"),
     items: [
-      ["⇧↵", "在 Claude 輸入框換行（不送出）"],
-      ["右上按鈕", "沒有 Claude：開始／接續；Claude 閒置：新對話／切換對話"],
+      [t("help.links.openKeys"), t("help.links.open")],
+      [t("help.links.revealKeys"), t("help.links.reveal")],
+      [t("help.links.urlKeys"), t("help.links.url")],
     ],
+  },
+  {
+    title: t("help.agents"),
+    items: [[t("help.agents.buttonsKeys"), t("help.agents.buttons")]],
   },
 ];
 
@@ -75,10 +80,10 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
         ref={panelRef}
         tabIndex={-1}
         role="dialog"
-        aria-label="鍵盤快捷鍵"
+        aria-label={t("help.title")}
         className="max-h-[80vh] w-[min(560px,90vw)] overflow-y-auto overscroll-contain outline-none rounded-xl border border-deck-border bg-deck-panel p-5 shadow-2xl"
       >
-        <h2 className="mb-4 text-[14px] font-semibold text-deck-text">鍵盤快捷鍵</h2>
+        <h2 className="mb-4 text-[14px] font-semibold text-deck-text">{t("help.title")}</h2>
         <div className="space-y-4">
           {GROUPS.map((group) => (
             <section key={group.title}>
@@ -88,7 +93,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
               <dl className="space-y-1 text-[13px]">
                 {group.items.map(([keys, desc]) => (
                   <div key={keys} className="flex gap-4">
-                    <dt className="w-32 shrink-0 font-mono text-deck-text">{keys}</dt>
+                    <dt className="w-40 shrink-0 font-mono text-deck-text">{keys}</dt>
                     <dd className="text-deck-muted">{desc}</dd>
                   </div>
                 ))}
@@ -96,7 +101,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
             </section>
           ))}
         </div>
-        <p className="mt-5 text-[11px] text-deck-muted">按 esc 或 ⌘/ 關閉</p>
+        <p className="mt-5 text-[11px] text-deck-muted">{t("help.close")}</p>
       </div>
     </div>
   );

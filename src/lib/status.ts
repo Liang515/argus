@@ -1,4 +1,5 @@
 import { AGENTS, type AgentId, isAgentId } from "./agents";
+import { type MessageKey, t } from "./i18n";
 
 /** 分頁裡 Claude Code 的狀態。off：沒有在跑 claude。 */
 export type ClaudeStatus = "off" | "idle" | "running" | "needs-input" | "done";
@@ -37,15 +38,14 @@ export function looksLikePermissionPrompt(plainText: string): boolean {
   return PERMISSION_PROMPT.test(plainText);
 }
 
-const STATUS_TEXT: Record<ClaudeStatus, string> = {
-  off: "",
-  idle: "待命中",
-  running: "執行中",
-  "needs-input": "等待你確認",
-  done: "已完成",
+const STATUS_TEXT: Record<Exclude<ClaudeStatus, "off">, MessageKey> = {
+  idle: "status.idle",
+  running: "status.running",
+  "needs-input": "status.needsInput",
+  done: "status.done",
 };
 
 /** 例如「agy 執行中」「Claude 等待你確認」。 */
 export function statusLabel(status: ClaudeStatus, agent: AgentId): string {
-  return status === "off" ? "" : `${AGENTS[agent].label} ${STATUS_TEXT[status]}`;
+  return status === "off" ? "" : `${AGENTS[agent].label} ${t(STATUS_TEXT[status])}`;
 }

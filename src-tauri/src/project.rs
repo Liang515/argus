@@ -51,7 +51,7 @@ pub async fn git_status(path: String) -> Result<Option<Vec<GitChange>>, String> 
         // 不搶 index.lock，避免跟 Claude 同時執行的 git 指令衝突
         .env("GIT_OPTIONAL_LOCKS", "0")
         .output()
-        .map_err(|e| format!("無法執行 git：{e}"))?;
+        .map_err(|e| format!("git_failed: {e}"))?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -96,32 +96,48 @@ const HANDOFF_PROTOCOL: &str = "## Session Handoff Protocol
   3. **待辦下一步 (Next Steps)：** 下一個 Agent 接手後應優先處理的具體事項。
 ";
 
+const HANDOFF_PROTOCOL_EN: &str = "## Session Handoff Protocol
+- Before starting a new task, check whether `HANDOFF.md` exists in the project root. If it does, read it first to catch up on the latest progress.
+- Whenever you finish a meaningful step, are about to end the conversation, or I say \"handoff\", update `HANDOFF.md` in the project root with:
+  1. **Current Status:** what was just finished and how it was verified.
+  2. **Modified Files:** the key files changed in this session.
+  3. **Next Steps:** what the next agent should do first.
+";
+
+/// 介面語言是中文就寫中文版規則，其他寫英文版；標題相同，判斷「是否加過」不受語言影響。
+fn protocol_for(lang: &str) -> &'static str {
+    if lang.starts_with("zh") {
+        HANDOFF_PROTOCOL
+    } else {
+        HANDOFF_PROTOCOL_EN
+    }
+}
+
 /// 把交接規則接在 CLAUDE.md 後面；已經有了就回傳 None（不用寫）。
-pub fn with_handoff_protocol(existing: Option<&str>) -> Option<String> {
+pub fn with_handoff_protocol(existing: Option<&str>, protocol: &str) -> Option<String> {
     match existing {
         Some(text) if text.contains(HANDOFF_MARKER) => None,
-        Some(text) if !text.trim().is_empty() => {
-            Some(format!("{}\n\n{HANDOFF_PROTOCOL}", text.trim_end()))
-        }
-        _ => Some(HANDOFF_PROTOCOL.to_string()),
+        Some(text) if !text.trim().is_empty() => Some(format!("{}\n\n{protocol}", text.trim_end())),
+        _ => Some(protocol.to_string()),
     }
 }
 
 /// 在專案根目錄的 CLAUDE.md 加上交接規則（沒有就建立），只寫這一個檔案。
 #[tauri::command]
-pub fn add_handoff_protocol(path: String) -> Result<(), String> {
+pub fn add_handoff_protocol(path: String, lang: Option<String>) -> Result<(), String> {
     let dir = Path::new(&path);
     if !dir.is_dir() {
-        return Err("資料夾不存在".into());
+        return Err("dir_missing".into());
     }
     let file = dir.join("CLAUDE.md");
     let existing = match fs::read_to_string(&file) {
         Ok(text) => Some(text),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(format!("讀取 CLAUDE.md 失敗：{e}")),
+        Err(e) => return Err(format!("read_claude_md: {e}")),
     };
-    if let Some(updated) = with_handoff_protocol(existing.as_deref()) {
-        fs::write(&file, updated).map_err(|e| format!("寫入 CLAUDE.md 失敗：{e}"))?;
+    let protocol = protocol_for(lang.as_deref().unwrap_or("en"));
+    if let Some(updated) = with_handoff_protocol(existing.as_deref(), protocol) {
+        fs::write(&file, updated).map_err(|e| format!("write_claude_md: {e}"))?;
     }
     Ok(())
 }
@@ -190,7 +206,7 @@ pub async fn detect_apps() -> Vec<String> {
 #[tauri::command]
 pub fn open_in(path: String, target: OpenTarget) -> Result<(), String> {
     if !Path::new(&path).is_dir() {
-        return Err("資料夾不存在".into());
+        return Err("dir_missing".into());
     }
     let status = Command::new("/usr/bin/open")
         .args(open_args(target, &path))
@@ -199,7 +215,7 @@ pub fn open_in(path: String, target: OpenTarget) -> Result<(), String> {
     if status.success() {
         Ok(())
     } else {
-        Err("找不到對應的 App，請確認已安裝".into())
+        Err("app_missing".into())
     }
 }
 
@@ -222,7 +238,7 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
         .args(args)
         .current_dir(dir)
         .output()
-        .map_err(|e| format!("無法執行 git：{e}"))?;
+        .map_err(|e| format!("git_failed: {e}"))?;
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
@@ -235,7 +251,7 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
 pub async fn create_worktree(path: String) -> Result<String, String> {
     let root = PathBuf::from(
         git(Path::new(&path), &["rev-parse", "--show-toplevel"])
-            .map_err(|_| "這個資料夾不是 git repo，無法建立 worktree".to_string())?,
+            .map_err(|_| "not_git".to_string())?,
     );
     let (dir, branch) = pick_worktree(&root, |b| {
         git(
@@ -252,7 +268,7 @@ pub async fn create_worktree(path: String) -> Result<String, String> {
     .ok_or("找不到可用的 worktree 名稱")?;
     let dir_str = dir.to_string_lossy().into_owned();
     git(&root, &["worktree", "add", "-b", &branch, &dir_str])
-        .map_err(|e| format!("建立 worktree 失敗：{e}"))?;
+        .map_err(|e| format!("worktree_failed: {e}"))?;
     Ok(dir_str)
 }
 
@@ -279,27 +295,64 @@ pub fn find_agents(path_var: &str) -> Vec<String> {
         .collect()
 }
 
+const PATH_MARK: &str = "__ARGUS_PATH__";
+/// 互動式 shell 可能被使用者設定拖住（自動更新、tmux 等），超過就改用 App 自己的 PATH。
+const SHELL_PATH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 取標記下一行：shell 設定可能也會印東西。`printenv PATH` 在 zsh、bash、fish 都是冒號分隔。
+pub fn path_after_marker(stdout: &str) -> Option<String> {
+    let mut lines = stdout.lines();
+    lines.find(|l| l.trim() == PATH_MARK)?;
+    lines
+        .next()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+}
+
+/// 執行指令並在時限內取得 stdout；逾時就結束它並回傳 None。
+pub fn stdout_within(mut cmd: Command, limit: std::time::Duration) -> Option<String> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut out = child.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut s = String::new();
+        let _ = out.read_to_string(&mut s);
+        let _ = tx.send(s);
+    });
+    // shell 留在背景的子行程可能一直佔著 stdout，所以用時限等讀取結果，而不是等到 EOF
+    match rx.recv_timeout(limit) {
+        Ok(s) => {
+            let _ = child.wait();
+            Some(s)
+        }
+        Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            None
+        }
+    }
+}
+
 /// GUI App 拿不到使用者的 PATH，所以問一次 login shell（會載入 .zshrc）。
 #[tauri::command]
 pub async fn detect_agents() -> Vec<String> {
-    const MARK: &str = "__ARGUS_PATH__";
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let path_var = Command::new(&shell)
-        .args([
-            "-l",
-            "-i",
-            "-c",
-            &format!("printf '%s%s\\n' {MARK} \"$PATH\""),
-        ])
-        .stdin(std::process::Stdio::null())
-        .output()
-        .ok()
-        .and_then(|out| {
-            // .zshrc 可能也會印東西，只取帶標記的那一行
-            String::from_utf8_lossy(&out.stdout)
-                .lines()
-                .find_map(|l| l.strip_prefix(MARK).map(str::to_string))
-        })
+    let mut cmd = Command::new(&shell);
+    cmd.args([
+        "-l",
+        "-i",
+        "-c",
+        &format!("printf '%s\\n' {PATH_MARK}; printenv PATH"),
+    ]);
+    let path_var = stdout_within(cmd, SHELL_PATH_TIMEOUT)
+        .and_then(|out| path_after_marker(&out))
         .unwrap_or_else(|| std::env::var("PATH").unwrap_or_default());
     find_agents(&path_var)
 }
@@ -403,25 +456,69 @@ mod tests {
     }
 
     #[test]
-    fn handoff_protocol_is_appended_once() {
-        let fresh = with_handoff_protocol(None).unwrap();
-        assert!(fresh.starts_with(HANDOFF_MARKER));
-        assert_eq!(with_handoff_protocol(Some("  \n")).unwrap(), fresh);
+    fn reads_path_after_marker_even_with_noisy_shell_config() {
+        let out = "Welcome!\n__ARGUS_PATH__\n/usr/bin:/opt/homebrew/bin\n";
+        assert_eq!(
+            path_after_marker(out).as_deref(),
+            Some("/usr/bin:/opt/homebrew/bin")
+        );
+        assert_eq!(path_after_marker("no marker\n"), None);
+        assert_eq!(path_after_marker("__ARGUS_PATH__\n"), None);
+    }
 
-        let appended = with_handoff_protocol(Some("# 規則\n- 用繁中\n\n")).unwrap();
+    #[test]
+    fn shell_query_gives_up_after_the_time_limit() {
+        let start = std::time::Instant::now();
+        let mut slow = Command::new("sh");
+        slow.args(["-c", "sleep 5"]);
+        assert_eq!(
+            stdout_within(slow, std::time::Duration::from_millis(300)),
+            None
+        );
+        assert!(start.elapsed() < std::time::Duration::from_secs(2));
+
+        let mut fast = Command::new("sh");
+        fast.args(["-c", "printf '%s\\n' __ARGUS_PATH__; printenv PATH"]);
+        let out = stdout_within(fast, std::time::Duration::from_secs(5)).unwrap();
+        assert!(path_after_marker(&out).is_some_and(|p| p.contains('/')));
+    }
+
+    #[test]
+    fn handoff_protocol_is_appended_once() {
+        let fresh = with_handoff_protocol(None, HANDOFF_PROTOCOL).unwrap();
+        assert!(fresh.starts_with(HANDOFF_MARKER));
+        assert_eq!(
+            with_handoff_protocol(Some("  \n"), HANDOFF_PROTOCOL).unwrap(),
+            fresh
+        );
+
+        let appended =
+            with_handoff_protocol(Some("# 規則\n- 用繁中\n\n"), HANDOFF_PROTOCOL).unwrap();
         assert!(appended.starts_with("# 規則\n- 用繁中\n\n## Session"));
-        assert_eq!(with_handoff_protocol(Some(&appended)), None);
+        assert_eq!(
+            with_handoff_protocol(Some(&appended), HANDOFF_PROTOCOL),
+            None
+        );
+        // 加過中文版，就算介面換成英文也不會再加一次
+        assert_eq!(
+            with_handoff_protocol(Some(&appended), HANDOFF_PROTOCOL_EN),
+            None
+        );
     }
 
     #[test]
     fn add_handoff_protocol_writes_claude_md() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().to_string_lossy().into_owned();
-        add_handoff_protocol(path.clone()).unwrap();
-        add_handoff_protocol(path).unwrap();
+        add_handoff_protocol(path.clone(), Some("en".into())).unwrap();
+        add_handoff_protocol(path, Some("zh-TW".into())).unwrap();
         let text = fs::read_to_string(dir.path().join("CLAUDE.md")).unwrap();
         assert_eq!(text.matches(HANDOFF_MARKER).count(), 1);
-        assert!(add_handoff_protocol("/no/such/dir".into()).is_err());
+        assert!(text.contains("Before starting a new task"));
+        assert_eq!(
+            add_handoff_protocol("/no/such/dir".into(), None),
+            Err("dir_missing".into())
+        );
     }
 
     #[test]

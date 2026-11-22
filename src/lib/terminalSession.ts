@@ -8,6 +8,7 @@ import { type ILink, Terminal } from "@xterm/xterm";
 import type { AgentId } from "./agents";
 import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
+import { t } from "./i18n";
 import {
   type ClaudeStatus,
   DECK_OSC,
@@ -65,6 +66,8 @@ export class TerminalSession {
   private disposed = false;
   private status: ClaudeStatus = "off";
   private agent: AgentId = "claude";
+  /** 最近一次由 Argus 啟動的 agent：沒有 hook 的 agent（Codex）靠文字偵測時，用它標示燈號。 */
+  private lastLaunched: AgentId = "claude";
   /** 收過 hook 訊號後就以 hook 為準，不再用文字比對。 */
   private hooksSeen = false;
   private readonly decoder = new TextDecoder();
@@ -90,7 +93,12 @@ export class TerminalSession {
       theme: THEME,
     });
     this.term.loadAddon(this.fitAddon);
-    this.term.loadAddon(new WebLinksAddon((_event, uri) => void openUrl(uri)));
+    // 網址和檔案路徑一樣要 ⌘＋點擊才開，一般點擊留給選取文字；只開 http(s)
+    this.term.loadAddon(
+      new WebLinksAddon((event, uri) => {
+        if (event.metaKey && /^https?:\/\//i.test(uri)) void openUrl(uri);
+      }),
+    );
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = "11";
     this.term.registerLinkProvider({
@@ -168,6 +176,11 @@ export class TerminalSession {
     this.focus();
   }
 
+  /** 記下這個分頁接下來啟動的是哪個 agent（給沒有 hook 的 agent 標燈號用）。 */
+  launched(agent: AgentId) {
+    this.lastLaunched = agent;
+  }
+
   /** 和 run 一樣，但 shell 還沒啟動時先記著，啟動後再送。 */
   runWhenReady(command: string) {
     if (this.running) this.run(command);
@@ -179,7 +192,7 @@ export class TerminalSession {
     this.running = false;
     this.hooksSeen = false;
     this.setStatus("off");
-    this.term.write("\r\n\x1b[2m[shell 已結束，按 Enter 重新啟動]\x1b[0m\r\n");
+    this.term.write(`\r\n\x1b[2m${t("term.exited")}\x1b[0m\r\n`);
   }
 
   dispose() {
@@ -254,7 +267,7 @@ export class TerminalSession {
     const text = typeof bytes === "string" ? bytes : this.decoder.decode(bytes, { stream: true });
     const plain = (this.tail + stripAnsi(text)).slice(-FALLBACK_TAIL * 2);
     if (looksLikePermissionPrompt(plain)) {
-      this.setStatus("needs-input");
+      this.setStatus("needs-input", this.lastLaunched);
       this.tail = "";
     } else {
       this.tail = plain.slice(-FALLBACK_TAIL);
@@ -271,13 +284,16 @@ export class TerminalSession {
     onData.onmessage = (data) => this.receive(data);
     this.running = true;
     try {
-      await invoke("pty_spawn", {
+      const cwdMissing = await invoke<boolean>("pty_spawn", {
         id: this.id,
         cwd: this.cwd,
         cols: this.term.cols,
         rows: this.term.rows,
         onData,
       });
+      if (cwdMissing) {
+        this.term.write(`\x1b[33m${t("term.cwdMissing", { path: this.cwd })}\x1b[0m\r\n`);
+      }
       // 建立 PTY 的期間若視窗或側欄改變大小，那次 pty_resize 會因為 PTY 還不存在而失敗，
       // agent 就一直用舊寬度排版、重畫時留下殘影。建好後補送一次目前尺寸（尺寸沒變時不會通知程式）。
       void invoke("pty_resize", {
@@ -291,7 +307,7 @@ export class TerminalSession {
       }
     } catch (err) {
       this.running = false;
-      this.term.write(`\r\n\x1b[31m無法啟動 shell：${String(err)}\x1b[0m\r\n`);
+      this.term.write(`\r\n\x1b[31m${t("term.startFailed", { err: String(err) })}\x1b[0m\r\n`);
     }
   }
 }
