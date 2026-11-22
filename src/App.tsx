@@ -649,6 +649,14 @@ export default function App() {
                 {t("app.openFolder")}
                 <kbd className="ml-1 text-xs text-deck-muted">⌘T</kbd>
               </button>
+              {/* 新裝好還沒有專案時，也能先當一般終端機用（開在家目錄） */}
+              <button
+                type="button"
+                onClick={() => void openTypedPath("~")}
+                className="-mt-1 text-xs text-deck-muted underline-offset-2 hover:text-deck-text hover:underline"
+              >
+                {t("app.justTerminal")}
+              </button>
               <dl className="mt-2 grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-xs">
                 {[
                   ["⌘K", t("app.emptySearch")],
