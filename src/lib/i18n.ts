@@ -70,7 +70,14 @@ const zh = {
   "agent.newTabFooter": "在同資料夾的新分頁開，不影響這個分頁",
   "agent.newTabTitle": "在新分頁開其他 agent",
   "agent.notInstalled": "未安裝",
-  "agent.notInstalledTitle": "還沒安裝 {agent}，點一下打開官方安裝說明",
+  "agent.notInstalledTitle": "還沒安裝 {agent}，點一下看怎麼安裝",
+  "agent.installHeading": "安裝 {agent}",
+  "agent.installRun": "在新分頁執行",
+  "agent.installCopy": "複製",
+  "agent.installCopied": "已複製",
+  "agent.installHint":
+    "會開一個新分頁並打好這行官方安裝指令，確認後按 Enter 執行。裝好後打開這個選單，就能直接啟動。",
+  "agent.installDocs": "看官方安裝說明 ↗",
 
   "app.pickFolder": "選擇專案資料夾",
   "app.worktreeFailed": "無法建立 worktree",
@@ -225,7 +232,14 @@ const en: Record<MessageKey, string> = {
   "agent.newTabFooter": "Opens in a new tab for the same folder; this tab is left alone",
   "agent.newTabTitle": "Open an agent in a new tab",
   "agent.notInstalled": "Not installed",
-  "agent.notInstalledTitle": "{agent} isn't installed. Click for the official install guide",
+  "agent.notInstalledTitle": "{agent} isn't installed. Click to see how to install it",
+  "agent.installHeading": "Install {agent}",
+  "agent.installRun": "Run in a new tab",
+  "agent.installCopy": "Copy",
+  "agent.installCopied": "Copied",
+  "agent.installHint":
+    "Opens a new tab with the official install command typed in. Check it, then press Enter. Once installed, open this menu again to start it.",
+  "agent.installDocs": "Official install guide ↗",
 
   "app.pickFolder": "Choose a project folder",
   "app.worktreeFailed": "Couldn't create the worktree",

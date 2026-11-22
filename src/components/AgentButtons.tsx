@@ -1,6 +1,15 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Check, ChevronDown, Download, History, Plus, Terminal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Copy,
+  Download,
+  History,
+  Plus,
+  Terminal,
+} from "lucide-react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { AGENT_IDS, AGENTS, type AgentId, type AgentIntent, buttonMode } from "../lib/agents";
 import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
@@ -13,14 +22,31 @@ interface Props {
   preferred: AgentId;
   installed: AgentId[];
   onAction: (intent: AgentIntent, agent?: AgentId) => void;
+  /** 在新分頁打好安裝指令（不按 Enter） */
+  onInstall: (agent: AgentId) => void;
+  /** 打開 agent 選單時：重新偵測，剛裝好的 agent 才會馬上出現 */
+  onMenuOpen: () => void;
 }
+
+const MenuActions = createContext<{ onInstall: (agent: AgentId) => void; onMenuOpen: () => void }>({
+  onInstall: () => {},
+  onMenuOpen: () => {},
+});
 
 const BUTTON =
   "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] hover:bg-deck-hover disabled:opacity-40 disabled:hover:bg-transparent";
 
 /** 分頁列右側：沒有 agent 時是「啟動＋下拉選單＋接續」，Claude 閒置時是「新對話＋切換對話」。
  * 有 agent 開著時，下拉選單改成在新分頁開 agent。 */
-export function AgentButtons({ status, running, preferred, installed, onAction }: Props) {
+export function AgentButtons(props: Props) {
+  return (
+    <MenuActions.Provider value={{ onInstall: props.onInstall, onMenuOpen: props.onMenuOpen }}>
+      <AgentButtonsInner {...props} />
+    </MenuActions.Provider>
+  );
+}
+
+function AgentButtonsInner({ status, running, preferred, installed, onAction }: Props) {
   const mode = buttonMode(status, running);
 
   if (mode === "claude-session") {
@@ -150,10 +176,19 @@ function AgentMenu({
   onPick,
 }: MenuProps) {
   const [open, setOpen] = useState(false);
+  // 點了沒裝的 agent：選單改成顯示它的安裝指令
+  const [installing, setInstalling] = useState<AgentId | null>(null);
+  const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { onInstall, onMenuOpen } = useContext(MenuActions);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setInstalling(null);
+      setCopied(false);
+      return;
+    }
+    onMenuOpen();
     const close = (e: MouseEvent | KeyboardEvent) => {
       if (
         e instanceof KeyboardEvent
@@ -169,7 +204,7 @@ function AgentMenu({
       window.removeEventListener("mousedown", close);
       window.removeEventListener("keydown", close);
     };
-  }, [open]);
+  }, [open, onMenuOpen]);
 
   return (
     <div ref={menuRef} className="relative flex items-center">
@@ -194,41 +229,98 @@ function AgentMenu({
           role="menu"
           className="absolute top-8 right-0 z-40 min-w-44 rounded-lg border border-deck-border bg-deck-panel p-1 shadow-xl"
         >
-          {AGENT_IDS.map((agent) => {
-            const ready = installed.includes(agent);
-            return (
+          {installing ? (
+            <div className="w-80 p-1.5 text-[12px]">
               <button
-                key={agent}
                 type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  if (ready) onPick(agent);
-                  else void openUrl(AGENTS[agent].install);
-                }}
-                title={
-                  ready ? undefined : t("agent.notInstalledTitle", { agent: AGENTS[agent].label })
-                }
-                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] text-deck-text hover:bg-deck-hover"
+                onClick={() => setInstalling(null)}
+                className="mb-2 flex items-center gap-1 text-deck-muted hover:text-deck-text"
               >
-                <span className="w-3.5">
-                  {agent === checked && <Check size={13} className="text-deck-accent" />}
-                </span>
-                <span className={`flex-1 ${ready ? "" : "text-deck-muted"}`}>
-                  {AGENTS[agent].label}
-                </span>
-                {ready ? (
-                  <code className="text-[11px] text-deck-muted">{AGENTS[agent].start}</code>
-                ) : (
-                  <span className="flex items-center gap-1 text-[11px] text-deck-accent">
-                    <Download size={11} />
-                    {t("agent.notInstalled")}
-                  </span>
-                )}
+                <ArrowLeft size={12} />
+                {t("agent.installHeading", { agent: AGENTS[installing].label })}
               </button>
-            );
-          })}
-          <p className="px-2.5 pt-1.5 pb-1 text-[11px] text-deck-muted">{footer}</p>
+              <code className="block rounded-md bg-deck-bg px-2 py-1.5 font-mono text-[11.5px] break-all text-deck-text select-text">
+                {AGENTS[installing].installCommand}
+              </code>
+              <div className="mt-2 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onInstall(installing);
+                  }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-deck-hover px-2 py-1.5 text-deck-text hover:bg-deck-border"
+                >
+                  <Terminal size={12} className="text-deck-accent" />
+                  {t("agent.installRun")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(AGENTS[installing].installCommand)
+                      .then(() => setCopied(true))
+                      .catch(() => {});
+                  }}
+                  className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-deck-muted hover:bg-deck-hover hover:text-deck-text"
+                >
+                  <Copy size={12} />
+                  {copied ? t("agent.installCopied") : t("agent.installCopy")}
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-deck-muted">
+                {t("agent.installHint")}
+              </p>
+              <button
+                type="button"
+                onClick={() => void openUrl(AGENTS[installing].install)}
+                className="mt-1 text-[11px] text-deck-muted underline-offset-2 hover:text-deck-text hover:underline"
+              >
+                {t("agent.installDocs")}
+              </button>
+            </div>
+          ) : (
+            <>
+              {AGENT_IDS.map((agent) => {
+                const ready = installed.includes(agent);
+                return (
+                  <button
+                    key={agent}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      if (ready) {
+                        setOpen(false);
+                        onPick(agent);
+                      } else setInstalling(agent);
+                    }}
+                    title={
+                      ready
+                        ? undefined
+                        : t("agent.notInstalledTitle", { agent: AGENTS[agent].label })
+                    }
+                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] text-deck-text hover:bg-deck-hover"
+                  >
+                    <span className="w-3.5">
+                      {agent === checked && <Check size={13} className="text-deck-accent" />}
+                    </span>
+                    <span className={`flex-1 ${ready ? "" : "text-deck-muted"}`}>
+                      {AGENTS[agent].label}
+                    </span>
+                    {ready ? (
+                      <code className="text-[11px] text-deck-muted">{AGENTS[agent].start}</code>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[11px] text-deck-accent">
+                        <Download size={11} />
+                        {t("agent.notInstalled")}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              <p className="px-2.5 pt-1.5 pb-1 text-[11px] text-deck-muted">{footer}</p>
+            </>
+          )}
         </div>
       )}
     </div>

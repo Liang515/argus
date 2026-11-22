@@ -55,6 +55,8 @@ interface Props {
   onAdd: () => void;
   onHelp: () => void;
   onAgent: (intent: AgentIntent, agent?: AgentId) => void;
+  onInstallAgent: (agent: AgentId) => void;
+  onAgentMenuOpen: () => void;
 }
 
 export function TabBar({
@@ -73,6 +75,8 @@ export function TabBar({
   onAdd,
   onHelp,
   onAgent,
+  onInstallAgent,
+  onAgentMenuOpen,
 }: Props) {
   const activeStatus = activeId ? (statuses[activeId] ?? "off") : "off";
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -248,6 +252,8 @@ export function TabBar({
           preferred={preferredAgent}
           installed={installed}
           onAction={onAgent}
+          onInstall={onInstallAgent}
+          onMenuOpen={onAgentMenuOpen}
         />
       )}
       <button

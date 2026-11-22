@@ -114,6 +114,7 @@ export default function App() {
   const [installed, setInstalled] = useState<AgentId[]>(["claude"]);
   // 有安裝的編輯器；null 表示還沒偵測完
   const [apps, setApps] = useState<OpenTarget[] | null>(null);
+  const detectRef = useRef<(force?: boolean) => void>(() => {});
   const [fullscreen, setFullscreen] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   // all：一般切換器；duplicate：⌘⇧T 選擇怎麼在同專案再開分頁
@@ -160,9 +161,14 @@ export default function App() {
     let last = 0;
     let complete = false;
     let hasAgent = false;
-    const detect = () => {
+    // force：打開 agent 選單時，不受節流限制，剛裝好的 agent 才會馬上出現
+    const detect = (force = false) => {
       // 已經有 agent 可用時不急著知道新裝的，拉長間隔省得一直啟動 shell
-      const interval = hasAgent ? DETECT_RELAXED_MS : DETECT_THROTTLE_MS;
+      const interval = force
+        ? DETECT_THROTTLE_MS
+        : hasAgent
+          ? DETECT_RELAXED_MS
+          : DETECT_THROTTLE_MS;
       if (complete || Date.now() - last < interval) return;
       last = Date.now();
       Promise.all([
@@ -177,9 +183,11 @@ export default function App() {
         })
         .catch(() => {});
     };
+    detectRef.current = detect;
     detect();
-    window.addEventListener("focus", detect);
-    return () => window.removeEventListener("focus", detect);
+    const onFocus = () => detect();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   // ⌘Q 或關視窗：後端先擋下來問這裡。有程式在跑的分頁就確認，否則直接結束
@@ -466,6 +474,20 @@ export default function App() {
     [sessionFor, insertTabAfter],
   );
 
+  const onAgentMenuOpen = useCallback(() => detectRef.current(true), []);
+
+  /** 在目前分頁右邊開新分頁，打好官方安裝指令，讓使用者確認後按 Enter。 */
+  const installAgent = useCallback(
+    (agent: AgentId) => {
+      const { tabs: current, activeId: active } = latest.current;
+      const tab = current.find((t) => t.id === active);
+      if (!tab) return;
+      const created = insertTabAfter(tab, tab.path);
+      sessionFor(created).typeWhenReady(AGENTS[agent].installCommand);
+    },
+    [insertTabAfter, sessionFor],
+  );
+
   const closeHelp = useCallback(() => {
     setHelpOpen(false);
     const { activeId: active } = latest.current;
@@ -631,6 +653,8 @@ export default function App() {
         onAdd={() => void addTab()}
         onHelp={() => setHelpOpen(true)}
         onAgent={(intent, agent) => void agentAction(intent, agent)}
+        onInstallAgent={installAgent}
+        onAgentMenuOpen={onAgentMenuOpen}
       />
       <div className="flex min-h-0 flex-1">
         <main ref={stageRef} className="relative min-h-0 min-w-0 flex-1">

@@ -5,28 +5,39 @@ export const AGENT_IDS = ["claude", "agy", "codex"] as const;
 export type AgentId = (typeof AGENT_IDS)[number];
 export type AgentIntent = "new" | "resume";
 
-/** install：官方安裝說明頁，沒裝的 agent 在選單裡點了會打開它。 */
+/** 沒裝的 agent 在選單裡點了，會顯示 installCommand 讓使用者在新分頁執行或複製。 */
 export const AGENTS: Record<
   AgentId,
-  { label: string; start: string; resume: string; install: string }
+  {
+    label: string;
+    start: string;
+    resume: string;
+    /** 官方安裝說明頁 */
+    install: string;
+    /** 官方的 macOS 一行安裝指令（2026-11 從官網查證） */
+    installCommand: string;
+  }
 > = {
   claude: {
     label: "Claude",
     start: "claude",
     resume: "claude --resume",
     install: "https://code.claude.com/docs/en/setup",
+    installCommand: "curl -fsSL https://claude.ai/install.sh | bash",
   },
   agy: {
     label: "agy",
     start: "agy",
     resume: "agy -c",
     install: "https://antigravity.google/docs/cli/install",
+    installCommand: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
   },
   codex: {
     label: "Codex",
     start: "codex",
     resume: "codex resume",
     install: "https://developers.openai.com/codex/cli/",
+    installCommand: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
   },
 };
 

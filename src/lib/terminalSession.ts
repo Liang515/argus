@@ -66,7 +66,7 @@ export class TerminalSession {
   private readonly decoder = new TextDecoder();
   private tail = "";
   /** shell 還沒啟動時要執行的指令（例如新分頁直接開 agent）。 */
-  private pending: string | null = null;
+  private pending: { text: string; submit: boolean } | null = null;
 
   constructor(
     readonly id: string,
@@ -208,7 +208,15 @@ export class TerminalSession {
   /** 和 run 一樣，但 shell 還沒啟動時先記著，啟動後再送。 */
   runWhenReady(command: string) {
     if (this.running) this.run(command);
-    else this.pending = command;
+    else this.pending = { text: command, submit: true };
+  }
+
+  /** 只把指令打好、不按 Enter，讓使用者確認後自己執行（例如從網路下載的安裝指令）。 */
+  typeWhenReady(command: string) {
+    if (this.running) {
+      this.send(command);
+      this.focus();
+    } else this.pending = { text: command, submit: false };
   }
 
   handleExit() {
@@ -338,8 +346,13 @@ export class TerminalSession {
         rows: this.term.rows,
       }).catch(() => {});
       if (this.pending) {
-        this.run(this.pending);
+        const { text, submit } = this.pending;
         this.pending = null;
+        if (submit) this.run(text);
+        else {
+          this.send(text);
+          this.focus();
+        }
       }
     } catch (err) {
       this.running = false;
