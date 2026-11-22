@@ -5,13 +5,16 @@ export interface PathCandidate {
   end: number;
   /** 去掉 `:行號:欄` 之後的路徑，用來確認檔案是否存在 */
   path: string;
+  /** `src/a.ts:12:3` 的 12 與 3，用編輯器打開時跳到這裡 */
+  line?: number;
+  column?: number;
 }
 
 // 空白、引號、括號與中文標點都當成分隔
 const SEPARATOR = /[\s"'`()[\]{}<>|,;，。、：；！？（）「」『』【】]/;
 // 片段結尾常黏著句點、冒號等標點
 const TRAILING = /[.:!?…]+$/;
-const LINE_SUFFIX = /:\d+(?::\d+)?$/;
+const LINE_SUFFIX = /:(\d+)(?::(\d+))?$/;
 const HAS_EXTENSION = /\.[A-Za-z][A-Za-z0-9]{0,9}$/;
 
 function looksLikePath(token: string): boolean {
@@ -32,8 +35,17 @@ export function findPathCandidates(text: string): PathCandidate[] {
     while (i < text.length && !SEPARATOR.test(text[i])) i++;
     let token = text.slice(start, i).replace(TRAILING, "");
     const end = start + token.length;
-    token = token.replace(LINE_SUFFIX, "");
-    if (token && looksLikePath(token)) found.push({ start, end, path: token });
+    const suffix = LINE_SUFFIX.exec(token);
+    if (suffix) token = token.slice(0, suffix.index);
+    if (token && looksLikePath(token)) {
+      found.push({
+        start,
+        end,
+        path: token,
+        line: suffix ? Number(suffix[1]) : undefined,
+        column: suffix?.[2] ? Number(suffix[2]) : undefined,
+      });
+    }
   }
   return found;
 }

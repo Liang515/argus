@@ -36,7 +36,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
       ["⌥←  ⌥→", "往左／往右跳一個字"],
       ["⌘⌫", "刪除游標前的整行"],
       ["⌘A", "全選終端機內容（可接著 ⌘C 複製）"],
-      ["⌘＋點擊路徑", "開啟檔案（資料夾開在 Finder）"],
+      ["⌘＋點擊路徑", "開啟檔案：程式碼用 VS Code／Antigravity 並跳到行號，資料夾開在 Finder"],
       ["⌘⌥＋點擊路徑", "在 Finder 顯示並選取"],
     ],
   },
@@ -76,7 +76,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
         tabIndex={-1}
         role="dialog"
         aria-label="鍵盤快捷鍵"
-        className="w-[min(560px,90vw)] outline-none rounded-xl border border-deck-border bg-deck-panel p-5 shadow-2xl"
+        className="max-h-[80vh] w-[min(560px,90vw)] overflow-y-auto overscroll-contain outline-none rounded-xl border border-deck-border bg-deck-panel p-5 shadow-2xl"
       >
         <h2 className="mb-4 text-[14px] font-semibold text-deck-text">鍵盤快捷鍵</h2>
         <div className="space-y-4">

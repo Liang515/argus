@@ -227,7 +227,12 @@ export class TerminalSession {
         decorations: { underline: true, pointerCursor: true },
         activate: (event) => {
           if (!event.metaKey) return;
-          void invoke("open_path", { path: target.path, reveal: event.altKey }).catch(() => {});
+          void invoke("open_path", {
+            path: target.path,
+            reveal: event.altKey,
+            line: c.line ?? null,
+            column: c.column ?? null,
+          }).catch(() => {});
         },
       });
     });
@@ -273,6 +278,13 @@ export class TerminalSession {
         rows: this.term.rows,
         onData,
       });
+      // 建立 PTY 的期間若視窗或側欄改變大小，那次 pty_resize 會因為 PTY 還不存在而失敗，
+      // agent 就一直用舊寬度排版、重畫時留下殘影。建好後補送一次目前尺寸（尺寸沒變時不會通知程式）。
+      void invoke("pty_resize", {
+        id: this.id,
+        cols: this.term.cols,
+        rows: this.term.rows,
+      }).catch(() => {});
       if (this.pending) {
         this.run(this.pending);
         this.pending = null;

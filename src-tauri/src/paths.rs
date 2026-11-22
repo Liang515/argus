@@ -87,18 +87,136 @@ pub fn is_runnable(path: &Path) -> bool {
     by_extension || executable_file
 }
 
-/// 開啟檔案或資料夾（資料夾開在 Finder），`reveal` 或可執行的檔案則在 Finder 選取它。
+/// 程式碼與文字檔：有裝 VS Code／Antigravity 時用它打開（還能跳到行號），不交給系統預設 App。
+const TEXT_EXTENSIONS: [&str; 52] = [
+    "md", "markdown", "mdx", "txt", "rst", "adoc", "json", "jsonc", "json5", "yaml", "yml", "toml",
+    "ini", "cfg", "conf", "env", "xml", "csv", "tsv", "log", "ts", "tsx", "js", "jsx", "mjs",
+    "cjs", "rs", "go", "py", "rb", "php", "java", "kt", "swift", "c", "h", "cc", "cpp", "hpp",
+    "cs", "css", "scss", "html", "vue", "svelte", "sql", "lua", "sh", "zsh", "bash", "fish",
+    "lock",
+];
+
+/// 沒有副檔名但通常是文字的檔名。
+const TEXT_FILE_NAMES: [&str; 8] = [
+    "Makefile",
+    "Dockerfile",
+    "LICENSE",
+    "README",
+    "Gemfile",
+    "Procfile",
+    ".gitignore",
+    ".editorconfig",
+];
+
+pub fn is_text_file(path: &Path) -> bool {
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    TEXT_FILE_NAMES.contains(&name)
+        || name.starts_with(".env")
+        || path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| TEXT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// 依序偏好的編輯器：(bundle id, 預設安裝名稱, 網址 scheme)
+const EDITORS: [(&str, &str, &str); 2] = [
+    ("com.microsoft.VSCode", "Visual Studio Code.app", "vscode"),
+    (
+        "com.google.antigravity-ide",
+        "Antigravity IDE.app",
+        "antigravity-ide",
+    ),
+];
+
+/// 網址路徑用的百分比編碼：保留英數與 `/-._~`，其餘（空白、中文等）逐位元組編碼。
+fn encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for b in path.bytes() {
+        if b.is_ascii_alphanumeric() || b"/-._~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// `vscode://file/<路徑>:<行>:<欄>`；VS Code 系的編輯器都認得，開著或關著都能用。
+pub fn editor_url(scheme: &str, path: &str, line: Option<u32>, column: Option<u32>) -> String {
+    let mut url = format!("{scheme}://file{}", encode_path(path));
+    if let Some(line) = line {
+        url.push_str(&format!(":{line}"));
+        if let Some(column) = column {
+            url.push_str(&format!(":{column}"));
+        }
+    }
+    url
+}
+
+#[derive(Debug, PartialEq)]
+pub enum OpenAction {
+    /// 在 Finder 選取它
+    Reveal,
+    /// 交給系統預設 App（資料夾開在 Finder）
+    OpenDefault,
+    /// 用編輯器打開這個網址
+    Editor(String),
+}
+
+/// ⌘⌥＋點擊 → 在 Finder 顯示；文字檔且有編輯器 → 編輯器（只開不執行，腳本也安全）；
+/// 會執行的檔案 → 只在 Finder 顯示；其他 → 系統預設 App。
+pub fn decide(
+    path: &Path,
+    is_dir: bool,
+    reveal: bool,
+    editor_scheme: Option<&str>,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> OpenAction {
+    if reveal {
+        return OpenAction::Reveal;
+    }
+    if !is_dir
+        && is_text_file(path)
+        && let Some(scheme) = editor_scheme
+    {
+        return OpenAction::Editor(editor_url(scheme, &path.to_string_lossy(), line, column));
+    }
+    if is_runnable(path) {
+        return OpenAction::Reveal;
+    }
+    OpenAction::OpenDefault
+}
+
+fn installed_editor() -> Option<&'static str> {
+    EDITORS
+        .iter()
+        .find(|(bundle, app, _)| crate::project::app_installed(bundle, app))
+        .map(|(_, _, scheme)| *scheme)
+}
+
+/// 開啟終端機裡被 ⌘＋點擊的路徑，規則見 [`decide`]。
 #[tauri::command]
-pub fn open_path(path: String, reveal: bool) -> Result<(), String> {
+pub async fn open_path(
+    path: String,
+    reveal: bool,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> Result<(), String> {
     let target = Path::new(&path);
-    if !target.exists() {
-        return Err("檔案不存在".into());
-    }
+    let meta = fs::metadata(target).map_err(|_| "檔案不存在".to_string())?;
+    let editor = if !reveal && !meta.is_dir() && is_text_file(target) {
+        installed_editor()
+    } else {
+        None
+    };
     let mut cmd = Command::new("/usr/bin/open");
-    if reveal || is_runnable(target) {
-        cmd.arg("-R");
-    }
-    let status = cmd.arg(target).status().map_err(|e| e.to_string())?;
+    match decide(target, meta.is_dir(), reveal, editor, line, column) {
+        OpenAction::Reveal => cmd.arg("-R").arg(target),
+        OpenAction::OpenDefault => cmd.arg(target),
+        OpenAction::Editor(url) => cmd.arg(url),
+    };
+    let status = cmd.status().map_err(|e| e.to_string())?;
     if status.success() {
         Ok(())
     } else {
@@ -169,5 +287,101 @@ mod tests {
         assert!(is_runnable(Path::new("/tmp/deploy.sh")));
         assert!(is_runnable(Path::new("/tmp/evil.terminal")));
         assert!(is_runnable(Path::new("/tmp/Profile.mobileconfig")));
+    }
+
+    #[test]
+    fn text_files_go_to_the_editor_with_line_and_column() {
+        let p = Path::new("/p/我的 專案/src/App.tsx");
+        assert_eq!(
+            decide(p, false, false, Some("vscode"), Some(313), Some(5)),
+            OpenAction::Editor(
+                "vscode://file/p/%E6%88%91%E7%9A%84%20%E5%B0%88%E6%A1%88/src/App.tsx:313:5".into()
+            )
+        );
+        assert_eq!(
+            decide(
+                Path::new("/p/README.md"),
+                false,
+                false,
+                Some("antigravity-ide"),
+                None,
+                None
+            ),
+            OpenAction::Editor("antigravity-ide://file/p/README.md".into())
+        );
+        assert_eq!(
+            decide(
+                Path::new("/p/Makefile"),
+                false,
+                false,
+                Some("vscode"),
+                Some(3),
+                None
+            ),
+            OpenAction::Editor("vscode://file/p/Makefile:3".into())
+        );
+    }
+
+    #[test]
+    fn falls_back_to_reveal_or_default_app() {
+        // 沒有編輯器：文字檔用系統預設 App，腳本只在 Finder 顯示
+        assert_eq!(
+            decide(Path::new("/p/a.md"), false, false, None, None, None),
+            OpenAction::OpenDefault
+        );
+        assert_eq!(
+            decide(Path::new("/p/run.sh"), false, false, None, None, None),
+            OpenAction::Reveal
+        );
+        // 有編輯器時腳本用編輯器打開（只開不執行）
+        assert!(matches!(
+            decide(
+                Path::new("/p/run.sh"),
+                false,
+                false,
+                Some("vscode"),
+                None,
+                None
+            ),
+            OpenAction::Editor(_)
+        ));
+        // 圖片、資料夾、⌘⌥
+        assert_eq!(
+            decide(
+                Path::new("/p/a.png"),
+                false,
+                false,
+                Some("vscode"),
+                None,
+                None
+            ),
+            OpenAction::OpenDefault
+        );
+        assert_eq!(
+            decide(Path::new("/p/src"), true, false, Some("vscode"), None, None),
+            OpenAction::OpenDefault
+        );
+        assert_eq!(
+            decide(
+                Path::new("/p/a.md"),
+                false,
+                true,
+                Some("vscode"),
+                None,
+                None
+            ),
+            OpenAction::Reveal
+        );
+        assert_eq!(
+            decide(
+                Path::new("/Applications/X.app"),
+                true,
+                false,
+                Some("vscode"),
+                None,
+                None
+            ),
+            OpenAction::Reveal
+        );
     }
 }

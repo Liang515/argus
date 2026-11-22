@@ -14,13 +14,13 @@ Named after Argus Panoptes, the hundred-eyed giant who never slept with all eyes
 - **Handoff protocol**: one click adds rules to the project's `CLAUDE.md` so the agent keeps `HANDOFF.md` up to date. When you switch agents or people, the next one can pick up where the last one stopped.
 - **Several tabs per project**: same folder, or a new Git worktree so two agents don't overwrite each other (⌘⇧T).
 - **Open the project in VS Code, Antigravity or Finder**. Editors that aren't installed are shown with a link to their download page.
+- **⌘-click file paths in the terminal**: code and text files open in VS Code or Antigravity at the right line (`src/App.tsx:313`), other files in their default app. ⌘⌥-click reveals the file in Finder. Apps, scripts and installers are never run from a click.
 - **macOS editing keys in the terminal**: ⌘← / ⌘→ for line start/end, ⌥← / ⌥→ by word, ⌘⌫ to delete to line start, ⇧↩ for a newline in Claude Code.
 - **Keyboard first**: ⌘K project and action switcher, ⌘1–9 to jump to a tab, ⌘/ for all shortcuts.
 
 ## Install
 
-1. Download the latest `Argus_*.dmg` from [Releases](https://github.com/Liang515/argus/releases) and drag Argus into Applications.
-2. The first time you open it, macOS shows "“Argus” Not Opened" because the app is not notarized by Apple. Click **Done** (not Move to Trash), then open **System Settings → Privacy & Security**, scroll down to the message about Argus and click **Open Anyway**. You only need to do this once.
+Download the latest `Argus_*.dmg` from [Releases](https://github.com/Liang515/argus/releases), open it and drag Argus into Applications. The app is signed and notarized by Apple, so it opens normally.
 
 Requirements:
 

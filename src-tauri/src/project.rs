@@ -154,7 +154,7 @@ fn open_args(target: OpenTarget, dir: &str) -> Vec<String> {
 }
 
 /// 用 Spotlight 依 bundle id 找 App；Spotlight 關掉時退回檢查預設安裝位置。
-fn app_installed(bundle: &str, default_name: &str) -> bool {
+pub(crate) fn app_installed(bundle: &str, default_name: &str) -> bool {
     let query = format!("kMDItemCFBundleIdentifier == '{bundle}'");
     let found = Command::new("/usr/bin/mdfind")
         .arg(&query)

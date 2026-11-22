@@ -20,6 +20,12 @@ describe("findPathCandidates", () => {
   it("網址、純數字與一般文字不算", () => {
     expect(paths("見 https://example.com/a.html 共 3.5 秒 and/or")).toEqual(["and/or"]);
   });
+  it("記下行號與欄號", () => {
+    const [a, b, c] = findPathCandidates("src/a.ts:12:3 lib/b.rs:7 c.md");
+    expect([a.line, a.column]).toEqual([12, 3]);
+    expect([b.line, b.column]).toEqual([7, undefined]);
+    expect([c.line, c.column]).toEqual([undefined, undefined]);
+  });
   it("起訖位置包含行號、不含結尾標點", () => {
     const [c] = findPathCandidates("x src/a.ts:12.");
     expect([c.start, c.end]).toEqual([2, 13]);

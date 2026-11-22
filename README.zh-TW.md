@@ -14,13 +14,13 @@
 - **交接規則**：一鍵在專案的 `CLAUDE.md` 加上規則，讓 agent 隨時更新 `HANDOFF.md`。換 agent 或換人時，下一個能從上一個停下的地方接手。
 - **同專案多分頁**：同一個資料夾，或新的 Git worktree，兩個 agent 不會互相覆蓋（⌘⇧T）。
 - **用 VS Code、Antigravity 或 Finder 開啟專案**。沒安裝的編輯器會顯示下載連結。
+- **在終端機裡 ⌘＋點擊檔案路徑**：程式碼與文字檔用 VS Code 或 Antigravity 打開並跳到指定行（例如 `src/App.tsx:313`），其他檔案用系統預設的 App。⌘⌥＋點擊在 Finder 顯示。.app、腳本、安裝檔不會因為點擊而被執行。
 - **終端機裡也能用 macOS 編輯鍵**：⌘← / ⌘→ 到行首／行尾、⌥← / ⌥→ 跳一個字、⌘⌫ 刪到行首、⇧↩ 在 Claude Code 裡換行。
 - **鍵盤優先**：⌘K 切換專案與動作、⌘1–9 跳到分頁、⌘/ 看所有快捷鍵。
 
 ## 安裝
 
-1. 從 [Releases](https://github.com/Liang515/argus/releases) 下載最新的 `Argus_*.dmg`，把 Argus 拖進「應用程式」。
-2. 第一次打開時，因為 App 沒有經過 Apple 公證，macOS 會顯示「未打開『Argus』」。按「**完成**」（不要按「丟到垃圾桶」），到「系統設定 → 隱私權與安全性」，捲到最下面關於 Argus 的訊息，按「**強制打開**」。只需要做一次。
+從 [Releases](https://github.com/Liang515/argus/releases) 下載最新的 `Argus_*.dmg`，打開後把 Argus 拖進「應用程式」。App 已經過 Apple 簽名與公證，雙擊就能直接打開。
 
 需求：
 
