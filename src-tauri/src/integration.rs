@@ -277,7 +277,55 @@ pub fn install() -> io::Result<Integration> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
     use std::process::Command;
+    use std::time::Duration;
+
+    /// 讀終端機輸出直到看到 `marker`。看到後背景執行緒仍繼續讀到結束：
+    /// macOS 上終端機還有沒讀的輸出時，子行程關閉終端機會一直等，測試就卡住。
+    fn read_until(
+        mut reader: Box<dyn Read + Send>,
+        marker: &'static [u8],
+        limit: Duration,
+    ) -> Option<Vec<u8>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let mut buf = [0u8; 4096];
+            let mut sent = false;
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                if !sent {
+                    out.extend_from_slice(&buf[..n]);
+                    if out.windows(marker.len()).any(|w| w == marker) {
+                        let _ = tx.send(std::mem::take(&mut out));
+                        sent = true;
+                    }
+                }
+            }
+            if !sent {
+                let _ = tx.send(out);
+            }
+        });
+        rx.recv_timeout(limit)
+            .ok()
+            .filter(|out| out.windows(marker.len()).any(|w| w == marker))
+    }
+
+    /// 等子行程結束，最多等 `limit`，逾時就結束它，測試不會永遠卡住。
+    fn wait_or_kill(child: &mut dyn portable_pty::Child, limit: Duration) {
+        let deadline = std::time::Instant::now() + limit;
+        while std::time::Instant::now() < deadline {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 
     #[test]
     fn hooks_cover_every_status_event() {
@@ -400,7 +448,6 @@ mod tests {
     #[test]
     fn hook_writes_to_the_agents_own_terminal() {
         use portable_pty::{CommandBuilder, PtySize, native_pty_system};
-        use std::io::Read;
 
         let dir = tempfile::tempdir().unwrap();
         install_to(dir.path()).unwrap();
@@ -424,26 +471,10 @@ mod tests {
         cmd.env("ARGUS_TTY", &stale);
         let mut child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
-        let mut reader = pair.master.try_clone_reader().unwrap();
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let mut out = Vec::new();
-            let mut buf = [0u8; 4096];
-            while let Ok(n) = reader.read(&mut buf) {
-                if n == 0 {
-                    break;
-                }
-                out.extend_from_slice(&buf[..n]);
-                if out.windows(4).any(|w| w == b"7777") {
-                    break;
-                }
-            }
-            let _ = tx.send(out);
-        });
-        let out = rx
-            .recv_timeout(std::time::Duration::from_secs(5))
-            .expect("終端機沒收到燈號訊號");
-        let _ = child.wait();
+        let reader = pair.master.try_clone_reader().unwrap();
+        let out =
+            read_until(reader, b"7777", Duration::from_secs(5)).expect("終端機沒收到燈號訊號");
+        wait_or_kill(&mut *child, Duration::from_secs(5));
         assert!(
             String::from_utf8_lossy(&out).contains("\x1b]7777;argus;running\x07"),
             "{out:?}"
@@ -592,5 +623,34 @@ mod tests {
             .output()
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&outside.stdout).trim(), "{}");
+    }
+
+    /// 看到訊號後不再讀、子行程又多印了東西時，macOS 會卡在等子行程結束（CI 曾卡 50 分鐘）。
+    #[test]
+    fn reading_continues_after_the_marker_so_the_child_can_exit() {
+        use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = CommandBuilder::new("sh");
+        cmd.args([
+            "-c",
+            "printf 7777; sleep 0.3; printf 'more output after the marker'",
+        ]);
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let reader = pair.master.try_clone_reader().unwrap();
+        assert!(read_until(reader, b"7777", Duration::from_secs(5)).is_some());
+        let start = std::time::Instant::now();
+        wait_or_kill(&mut *child, Duration::from_secs(5));
+        assert!(
+            start.elapsed() < Duration::from_secs(4),
+            "子行程沒有自己結束"
+        );
     }
 }
