@@ -43,6 +43,10 @@ const zh = {
 
   "side.openWith": "用 {app} 開啟這個專案",
   "side.editor": "編輯器",
+  "custom.run": "執行 {name}（{cmd}）",
+  "custom.edit": "編輯自訂 agent（~/.argus/agents.json）",
+  "custom.editFailed": "無法打開自訂 agent 設定檔：{err}",
+  "custom.heading": "自訂",
   "side.pickEditor": "選擇編輯器",
   "side.editorFooter": "選過的會記住，⌘＋點擊檔案路徑也用它開",
   "side.notInstalled": "還沒安裝 {app}。點一下打開下載頁，裝好後切回 Argus 就能一鍵開啟專案",
@@ -235,6 +239,10 @@ const en: Record<MessageKey, string> = {
 
   "side.openWith": "Open this project in {app}",
   "side.editor": "Editor",
+  "custom.run": "Run {name} ({cmd})",
+  "custom.edit": "Edit custom agents (~/.argus/agents.json)",
+  "custom.editFailed": "Couldn't open the custom agents file: {err}",
+  "custom.heading": "Custom",
   "side.pickEditor": "Choose editor",
   "side.editorFooter": "Remembered, and used for ⌘-clicked file paths too",
   "side.notInstalled":

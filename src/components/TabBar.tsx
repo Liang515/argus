@@ -1,6 +1,7 @@
 import { ArrowUpCircle, ChevronDown, GitBranch, Keyboard, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
+import type { CustomAgent } from "../lib/customAgents";
 import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
 import { dropIndex, hiddenTabIds, overflowAlerts, type Tab } from "../lib/tabs";
@@ -57,6 +58,8 @@ interface Props {
   onAgent: (intent: AgentIntent, agent?: AgentId) => void;
   onInstallAgent: (agent: AgentId) => void;
   onAgentMenuOpen: () => void;
+  customAgents: CustomAgent[];
+  onCustomAgent: (agent: CustomAgent) => void;
   /** 有新版時的版本號，沒有就是 null（不顯示任何東西） */
   updateVersion: string | null;
   updating: boolean;
@@ -81,6 +84,8 @@ export function TabBar({
   onAgent,
   onInstallAgent,
   onAgentMenuOpen,
+  customAgents,
+  onCustomAgent,
   updateVersion,
   updating,
   onUpdate,
@@ -273,6 +278,8 @@ export function TabBar({
           onAction={onAgent}
           onInstall={onInstallAgent}
           onMenuOpen={onAgentMenuOpen}
+          custom={customAgents}
+          onCustom={onCustomAgent}
         />
       )}
       <button

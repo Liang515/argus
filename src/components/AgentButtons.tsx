@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { AGENT_IDS, AGENTS, type AgentId, type AgentIntent, buttonMode } from "../lib/agents";
+import type { CustomAgent } from "../lib/customAgents";
 import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
 
@@ -26,11 +27,21 @@ interface Props {
   onInstall: (agent: AgentId) => void;
   /** 打開 agent 選單時：重新偵測，剛裝好的 agent 才會馬上出現 */
   onMenuOpen: () => void;
+  /** ~/.argus/agents.json 的自訂指令 */
+  custom: CustomAgent[];
+  onCustom: (agent: CustomAgent) => void;
 }
 
-const MenuActions = createContext<{ onInstall: (agent: AgentId) => void; onMenuOpen: () => void }>({
+const MenuActions = createContext<{
+  onInstall: (agent: AgentId) => void;
+  onMenuOpen: () => void;
+  custom: CustomAgent[];
+  onCustom: (agent: CustomAgent) => void;
+}>({
   onInstall: () => {},
   onMenuOpen: () => {},
+  custom: [],
+  onCustom: () => {},
 });
 
 const BUTTON =
@@ -40,7 +51,14 @@ const BUTTON =
  * 有 agent 開著時，下拉選單改成在新分頁開 agent。 */
 export function AgentButtons(props: Props) {
   return (
-    <MenuActions.Provider value={{ onInstall: props.onInstall, onMenuOpen: props.onMenuOpen }}>
+    <MenuActions.Provider
+      value={{
+        onInstall: props.onInstall,
+        onMenuOpen: props.onMenuOpen,
+        custom: props.custom,
+        onCustom: props.onCustom,
+      }}
+    >
       <AgentButtonsInner {...props} />
     </MenuActions.Provider>
   );
@@ -180,7 +198,7 @@ function AgentMenu({
   const [installing, setInstalling] = useState<AgentId | null>(null);
   const [copied, setCopied] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const { onInstall, onMenuOpen } = useContext(MenuActions);
+  const { onInstall, onMenuOpen, custom, onCustom } = useContext(MenuActions);
 
   useEffect(() => {
     if (!open) {
@@ -321,6 +339,29 @@ function AgentMenu({
                   </button>
                 );
               })}
+              {custom.length > 0 && (
+                <>
+                  <p className="mt-1 border-t border-deck-border px-2.5 pt-1.5 pb-0.5 text-[11px] text-deck-muted">
+                    {t("custom.heading")}
+                  </p>
+                  {custom.map((agent) => (
+                    <button
+                      key={agent.name}
+                      type="button"
+                      role="menuitem"
+                      title={agent.command}
+                      onClick={() => {
+                        setOpen(false);
+                        onCustom(agent);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] text-deck-text hover:bg-deck-hover"
+                    >
+                      <span className="w-3.5" />
+                      <span className="flex-1 truncate">{agent.name}</span>
+                    </button>
+                  ))}
+                </>
+              )}
               <p className="px-2.5 pt-1.5 pb-1 text-[11px] text-deck-muted">{footer}</p>
             </>
           )}

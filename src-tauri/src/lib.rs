@@ -1,4 +1,5 @@
 mod activity;
+mod custom_agents;
 mod editors;
 mod git;
 mod integration;
@@ -168,6 +169,8 @@ pub fn run() {
             project::create_worktree,
             project::detect_agents,
             editors::detect_apps,
+            custom_agents::read_custom_agents,
+            custom_agents::edit_custom_agents,
             project::add_handoff_protocol,
             paths::resolve_paths,
             paths::open_path,

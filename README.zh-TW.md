@@ -13,8 +13,8 @@
 - **專案側欄**有三個小分頁：**活動**（Claude 的計畫進度條，以及 Claude／`agy` 的每一步：讀了哪些檔、改了幾行、執行的指令成功或失敗與花費時間）、**變更**（即時 Git 狀態）、**交接**（專案裡的 `HANDOFF.md` 或 `CLAUDE.md`）。
 - **交接規則**：一鍵在專案的 `CLAUDE.md` 加上規則，讓 agent 隨時更新 `HANDOFF.md`。換 agent 或換人時，下一個能從上一個停下的地方接手。
 - **同專案多分頁**：同一個資料夾，或新的 Git worktree，兩個 agent 不會互相覆蓋（⌘⇧T）。分頁名稱維持清楚，放不下時有「全部分頁」選單，畫面外的分頁在等你時會亮燈提醒。
-- **用 VS Code、Antigravity 或 Finder 開啟專案**。沒安裝的編輯器會顯示下載連結。
-- **在終端機裡 ⌘＋點擊檔案路徑**：程式碼與文字檔用 VS Code 或 Antigravity 打開並跳到指定行（例如 `src/App.tsx:313`），其他檔案用系統預設的 App。⌘⌥＋點擊在 Finder 顯示。.app、腳本、安裝檔不會因為點擊而被執行。
+- **用編輯器或 Finder 開啟專案**：支援 VS Code、Cursor、Windsurf、Antigravity、Zed。只列出你有安裝的，並記住你選的那個。
+- **在終端機裡 ⌘＋點擊檔案路徑**：程式碼與文字檔用你選的編輯器打開並跳到指定行（例如 `src/App.tsx:313`），其他檔案用系統預設的 App。⌘⌥＋點擊在 Finder 顯示。.app、腳本、安裝檔不會因為點擊而被執行。
 - **終端機裡也能用 macOS 編輯鍵**：⌘← / ⌘→ 到行首／行尾、⌥← / ⌥→ 跳一個字、⌘⌫ 刪到行首、⇧↩ 在 Claude Code 裡換行。
 - **鍵盤優先**：⌘K 切換專案與動作、⌘1–9 跳到分頁、⌘+ / ⌘− / ⌘0 縮放終端機文字、⌘/ 看所有快捷鍵。
 - **配色**：Argus、Clear Dark，或跟隨 macOS「終端機」的配色（⌘K 搜尋「配色」）。
@@ -30,6 +30,24 @@
 | 等你確認燈號         | ✓           | –         | 盡量偵測（看畫面文字） |
 | 新對話／切換對話按鈕 | ✓           | –         | –                      |
 | 活動面板             | ✓           | ✓（動作） | –                      |
+
+### 自訂 agent（本機模型等）
+
+在 `~/.argus/agents.json` 加上自己的項目，就會出現在 agent 選單裡。⌘K →「編輯自訂 agent」會建立附範例的檔案。例如用 [Ollama](https://ollama.com) 讓 Claude Code 或 Codex 改接本機模型：
+
+```json
+{
+  "agents": [
+    {
+      "name": "Claude（本機 Ollama）",
+      "command": "ANTHROPIC_BASE_URL=http://localhost:11434 ANTHROPIC_AUTH_TOKEN=ollama claude --model qwen3-coder"
+    },
+    { "name": "Codex（本機）", "command": "codex --oss" }
+  ]
+}
+```
+
+指令會像一般 shell 指令一樣打進分頁。指令執行的是 `claude`、`agy` 或 `codex` 時，狀態燈照常運作。確切的設定請以模型服務的官方文件為準。
 
 介面語言跟著 macOS 系統語言：繁體中文或英文。
 
@@ -54,7 +72,7 @@ brew install --cask liang515/tap/argus
 
 Argus 不會改你自己的 shell 或 agent 設定，只會寫入：
 
-- `~/.argus/`：存下的分頁、Claude Code 狀態 hook，以及 zsh 包裝：先照常載入你的 zsh 設定，再只在 Argus 分頁裡替 `claude` 加上 hook。
+- `~/.argus/`：存下的分頁、Claude Code 狀態 hook，以及 zsh 包裝：先照常載入你的 zsh 設定，再只在 Argus 分頁裡替 `claude` 加上 hook。`~/.argus/agents.json` 只有你選「編輯自訂 agent」時才會建立。
 - `~/.gemini/config/plugins/argus/`：`agy` 的狀態外掛，只有裝了 `agy` 才會寫，在 Argus 以外不做任何事。
 - 專案的 `CLAUDE.md`：只有你在側欄按「加入交接規則」時才會寫。
 - 專案旁邊的 `<專案>-wt-N` 資料夾：只有你選擇用新的 Git worktree 開分頁時才會建立。

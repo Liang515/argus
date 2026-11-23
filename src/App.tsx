@@ -20,6 +20,7 @@ import {
   isAgentId,
   preferredAgent,
 } from "./lib/agents";
+import { type CustomAgent, parseCustomAgents } from "./lib/customAgents";
 import { nextFontSize, parseFontSize } from "./lib/fontSize";
 import { pushRecent } from "./lib/fuzzy";
 import { t, translateError } from "./lib/i18n";
@@ -137,6 +138,18 @@ export default function App() {
   const [installed, setInstalled] = useState<AgentId[]>(["claude"]);
   // 有安裝的編輯器；null 表示還沒偵測完
   const [editors, setEditors] = useState<EditorInfo[] | null>(null);
+  const [customAgents, setCustomAgents] = useState<CustomAgent[]>([]);
+  // ~/.argus/agents.json 很小，每次打開選單、切回 Argus 都重讀，改了馬上生效
+  const loadCustomAgents = useCallback(() => {
+    void invoke<string | null>("read_custom_agents")
+      .then((text) => setCustomAgents(text ? parseCustomAgents(text) : []))
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadCustomAgents();
+    window.addEventListener("focus", loadCustomAgents);
+    return () => window.removeEventListener("focus", loadCustomAgents);
+  }, [loadCustomAgents]);
   const [editorId, setEditorId] = useState(loadPreferredEditor);
   const editor = pickEditor(editorId, editors ?? []);
   const chooseEditor = useCallback((id: string) => {
@@ -539,7 +552,40 @@ export default function App() {
     [sessionFor, insertTabAfter],
   );
 
-  const onAgentMenuOpen = useCallback(() => detectRef.current(true), []);
+  /** 自訂指令：分頁空著就在這裡打，被占用就在右邊開新分頁，和內建 agent 一樣。 */
+  const customAction = useCallback(
+    async (agent: CustomAgent) => {
+      const { activeId: active, tabs: current, statuses: st } = latest.current;
+      const session = active ? sessions.current.get(active) : undefined;
+      const tab = current.find((t) => t.id === active);
+      if (!session || !active || !tab) return;
+      const busy = await invoke<boolean>("pty_is_busy", { id: session.id }).catch(() => false);
+      if (!busy) {
+        if ((st[active] ?? "off") !== "off") session.clearStaleStatus();
+        if (agent.base) session.launched(agent.base);
+        session.run(agent.command);
+        return;
+      }
+      const target = sessionFor(insertTabAfter(tab, tab.path));
+      if (agent.base) target.launched(agent.base);
+      target.runWhenReady(agent.command);
+    },
+    [sessionFor, insertTabAfter],
+  );
+
+  const editCustomAgents = useCallback(() => {
+    void invoke("edit_custom_agents").catch(async (err) => {
+      await message(t("custom.editFailed", { err: translateError(err) }), {
+        title: t("open.failedTitle"),
+        kind: "error",
+      });
+    });
+  }, []);
+
+  const onAgentMenuOpen = useCallback(() => {
+    detectRef.current(true);
+    loadCustomAgents();
+  }, [loadCustomAgents]);
 
   /** 在目前分頁右邊開新分頁，打好官方安裝指令，讓使用者確認後按 Enter。 */
   const installAgent = useCallback(
@@ -650,6 +696,7 @@ export default function App() {
         run: () => setSidebarOpen((o) => !o),
       },
       { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => setHelpOpen(true) },
+      { id: "custom-edit", label: t("custom.edit"), run: editCustomAgents },
       {
         id: "zoom-in",
         label: t("app.zoomIn"),
@@ -727,6 +774,13 @@ export default function App() {
           });
         }
       }
+      for (const agent of customAgents) {
+        list.push({
+          id: `custom-${agent.name}`,
+          label: t("custom.run", { name: agent.name, cmd: agent.command }),
+          run: () => void customAction(agent),
+        });
+      }
       list.push(
         ...duplicateActions.map((a) => ({ ...a, label: t("app.anotherTab", { label: a.label }) })),
         {
@@ -742,6 +796,9 @@ export default function App() {
     activeTab,
     editors,
     chooseEditor,
+    customAgents,
+    customAction,
+    editCustomAgents,
     activeStatus,
     activeRunning,
     installed,
@@ -772,6 +829,8 @@ export default function App() {
         onAgent={(intent, agent) => void agentAction(intent, agent)}
         onInstallAgent={installAgent}
         onAgentMenuOpen={onAgentMenuOpen}
+        customAgents={customAgents}
+        onCustomAgent={(agent) => void customAction(agent)}
         updateVersion={update?.version ?? null}
         updating={updating}
         onUpdate={() => void applyUpdate()}
