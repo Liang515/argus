@@ -23,7 +23,7 @@ import {
 import { type CustomAgent, parseCustomAgents } from "./lib/customAgents";
 import { nextFontSize, parseFontSize } from "./lib/fontSize";
 import { pushRecent } from "./lib/fuzzy";
-import { t, translateError } from "./lib/i18n";
+import { lang, t, translateError } from "./lib/i18n";
 import {
   type EditorInfo,
   loadPreferredEditor,
@@ -574,7 +574,7 @@ export default function App() {
   );
 
   const editCustomAgents = useCallback(() => {
-    void invoke("edit_custom_agents").catch(async (err) => {
+    void invoke("edit_custom_agents", { lang }).catch(async (err) => {
       await message(t("custom.editFailed", { err: translateError(err) }), {
         title: t("open.failedTitle"),
         kind: "error",
