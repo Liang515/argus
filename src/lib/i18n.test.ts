@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { detectLang, format, MESSAGE_KEYS, translate, translateError } from "./i18n";
+import { detectLang, format, MESSAGE_KEYS, resolveLang, translate, translateError } from "./i18n";
+
+describe("resolveLang", () => {
+  it("選過的語言優先，沒選過或值不對就跟著系統", () => {
+    expect(resolveLang("en", ["zh-TW"])).toBe("en");
+    expect(resolveLang("zh-TW", ["en-US"])).toBe("zh-TW");
+    expect(resolveLang(null, ["zh-TW"])).toBe("zh-TW");
+    expect(resolveLang("fr", ["en-US"])).toBe("en");
+  });
+});
 
 describe("detectLang", () => {
   it("系統語言有中文就用繁中，其他用英文", () => {

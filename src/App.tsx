@@ -23,7 +23,7 @@ import {
 import { type CustomAgent, parseCustomAgents } from "./lib/customAgents";
 import { nextFontSize, parseFontSize } from "./lib/fontSize";
 import { pushRecent } from "./lib/fuzzy";
-import { lang, t, translateError } from "./lib/i18n";
+import { type Lang, lang, setLang, t, translateError } from "./lib/i18n";
 import {
   type EditorInfo,
   loadPreferredEditor,
@@ -139,6 +139,12 @@ export default function App() {
   // 有安裝的編輯器；null 表示還沒偵測完
   const [editors, setEditors] = useState<EditorInfo[] | null>(null);
   const [customAgents, setCustomAgents] = useState<CustomAgent[]>([]);
+  // 介面語言；改了之後整個畫面重畫，t() 就會用新的語言
+  const [uiLang, setUiLang] = useState<Lang>(lang);
+  const switchLang = useCallback((next: Lang) => {
+    setLang(next);
+    setUiLang(next);
+  }, []);
   // ~/.argus/agents.json 很小，每次打開選單、切回 Argus 都重讀，改了馬上生效
   const loadCustomAgents = useCallback(() => {
     void invoke<string | null>("read_custom_agents")
@@ -697,6 +703,18 @@ export default function App() {
       },
       { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => setHelpOpen(true) },
       { id: "custom-edit", label: t("custom.edit"), run: editCustomAgents },
+      // 兩種語言都寫，用哪種語言搜尋都找得到
+      ...(
+        [
+          ["zh-TW", "繁體中文"],
+          ["en", "English"],
+        ] as const
+      ).map(([id, name]) => ({
+        id: `lang-${id}`,
+        label: `語言 / Language：${name}`,
+        hint: id === uiLang ? "✓" : undefined,
+        run: () => switchLang(id),
+      })),
       {
         id: "zoom-in",
         label: t("app.zoomIn"),
@@ -799,6 +817,8 @@ export default function App() {
     customAgents,
     customAction,
     editCustomAgents,
+    uiLang,
+    switchLang,
     activeStatus,
     activeRunning,
     installed,

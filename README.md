@@ -49,7 +49,7 @@ Add your own entries to the agent menu in `~/.argus/agents.json`. Use ⌘K → "
 
 The command is typed into the tab like any shell command. If it runs `claude`, `agy` or `codex`, the status lights work as usual. Check your model provider's documentation for the exact settings. You can also ask your agent to edit `~/.argus/agents.json` for you.
 
-The interface follows your macOS language: Traditional Chinese or English.
+The interface follows your macOS language: Traditional Chinese or English. To switch it, open ⌘K and search "Language".
 
 ## Install
 

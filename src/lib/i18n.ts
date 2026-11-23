@@ -410,11 +410,40 @@ function systemLanguages(): readonly string[] {
   return navigator.languages?.length ? navigator.languages : [navigator.language];
 }
 
-export const lang: Lang = detectLang(systemLanguages());
+const LANG_KEY = "argus.lang";
+
+/** 使用者在 ⌘K 選過語言就用它，否則跟著系統。 */
+export function resolveLang(saved: string | null, languages: readonly string[]): Lang {
+  return saved === "zh-TW" || saved === "en" ? saved : detectLang(languages);
+}
+
+function savedLang(): string | null {
+  try {
+    return localStorage.getItem(LANG_KEY);
+  } catch {
+    return null;
+  }
+}
 
 // 讓 <html lang> 跟著介面語言（index.html 預設寫的是繁中）
-if (typeof document !== "undefined")
-  document.documentElement.lang = lang === "en" ? "en" : "zh-Hant";
+function applyHtmlLang() {
+  if (typeof document !== "undefined")
+    document.documentElement.lang = lang === "en" ? "en" : "zh-Hant";
+}
+
+export let lang: Lang = resolveLang(savedLang(), systemLanguages());
+applyHtmlLang();
+
+/** 切換介面語言並記住；畫面要由呼叫者重新繪製（App 會跟著重畫）。 */
+export function setLang(next: Lang) {
+  lang = next;
+  applyHtmlLang();
+  try {
+    localStorage.setItem(LANG_KEY, next);
+  } catch {
+    // 存不了就只在這次開啟期間有效
+  }
+}
 
 export function format(template: string, vars: Record<string, string | number> = {}): string {
   return template.replace(/\{(\w+)\}/g, (match, name: string) =>
