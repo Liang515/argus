@@ -7,7 +7,7 @@ use std::process::Command;
 use std::sync::Mutex;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 /// 依序尋找的交接文件。
@@ -142,33 +142,6 @@ pub fn add_handoff_protocol(path: String, lang: Option<String>) -> Result<(), St
     Ok(())
 }
 
-#[derive(Deserialize, Clone, Copy, Debug)]
-#[serde(rename_all = "lowercase")]
-pub enum OpenTarget {
-    Vscode,
-    Antigravity,
-    Finder,
-}
-
-fn bundle_id(target: OpenTarget) -> Option<&'static str> {
-    match target {
-        OpenTarget::Vscode => Some("com.microsoft.VSCode"),
-        OpenTarget::Antigravity => Some("com.google.antigravity-ide"),
-        OpenTarget::Finder => None,
-    }
-}
-
-/// 只允許固定的幾個 App，前端無法指定任意指令。
-fn open_args(target: OpenTarget, dir: &str) -> Vec<String> {
-    let bundle = bundle_id(target);
-    let mut args = Vec::new();
-    if let Some(bundle) = bundle {
-        args.extend(["-b".to_string(), bundle.to_string()]);
-    }
-    args.push(dir.to_string());
-    args
-}
-
 /// 用 Spotlight 依 bundle id 找 App；Spotlight 關掉時退回檢查預設安裝位置。
 pub(crate) fn app_installed(bundle: &str, default_name: &str) -> bool {
     let query = format!("kMDItemCFBundleIdentifier == '{bundle}'");
@@ -186,33 +159,22 @@ pub(crate) fn app_installed(bundle: &str, default_name: &str) -> bool {
         .any(|dir| dir.join(default_name).is_dir())
 }
 
-/// 有安裝的編輯器（vscode / antigravity），給側欄決定按鈕能不能按。
+/// 用 Finder 或支援的編輯器打開專案資料夾；target 只能是 "finder" 或 [`crate::editors::EDITORS`] 裡的 id。
 #[tauri::command]
-pub async fn detect_apps() -> Vec<String> {
-    [
-        (OpenTarget::Vscode, "vscode", "Visual Studio Code.app"),
-        (
-            OpenTarget::Antigravity,
-            "antigravity",
-            "Antigravity IDE.app",
-        ),
-    ]
-    .into_iter()
-    .filter(|(target, _, app)| bundle_id(*target).is_some_and(|id| app_installed(id, app)))
-    .map(|(_, name, _)| name.to_string())
-    .collect()
-}
-
-#[tauri::command]
-pub fn open_in(path: String, target: OpenTarget) -> Result<(), String> {
+pub fn open_in(path: String, target: String) -> Result<(), String> {
     if !Path::new(&path).is_dir() {
         return Err("dir_missing".into());
     }
-    let status = Command::new("/usr/bin/open")
-        .args(open_args(target, &path))
-        .status()
-        .map_err(|e| e.to_string())?;
-    if status.success() {
+    let opened = if target == "finder" {
+        Command::new("/usr/bin/open")
+            .arg(&path)
+            .status()
+            .is_ok_and(|s| s.success())
+    } else {
+        let editor = crate::editors::find(&target).ok_or("app_missing")?;
+        crate::editors::open_with(editor, &path)
+    };
+    if opened {
         Ok(())
     } else {
         Err("app_missing".into())
@@ -546,12 +508,10 @@ mod tests {
     }
 
     #[test]
-    fn open_args_use_fixed_bundle_ids() {
-        assert_eq!(
-            open_args(OpenTarget::Vscode, "/p"),
-            vec!["-b", "com.microsoft.VSCode", "/p"]
-        );
-        assert_eq!(open_args(OpenTarget::Finder, "/p"), vec!["/p"]);
+    fn open_in_rejects_unknown_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_string_lossy().into_owned();
+        assert_eq!(open_in(path, "/bin/sh".into()), Err("app_missing".into()));
     }
 
     #[test]

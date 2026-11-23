@@ -1,4 +1,5 @@
 mod activity;
+mod editors;
 mod git;
 mod integration;
 mod paths;
@@ -166,7 +167,7 @@ pub fn run() {
             project::open_in,
             project::create_worktree,
             project::detect_agents,
-            project::detect_apps,
+            editors::detect_apps,
             project::add_handoff_protocol,
             paths::resolve_paths,
             paths::open_path,

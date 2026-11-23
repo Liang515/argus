@@ -6,6 +6,8 @@ use std::process::Command;
 
 use serde::Serialize;
 
+use crate::editors::{self, Editor};
+
 /// 一行裡最多檢查幾個候選路徑，避免很長的輸出造成大量檔案系統查詢。
 const MAX_CANDIDATES: usize = 64;
 
@@ -124,16 +126,6 @@ pub fn is_text_file(path: &Path) -> bool {
             .is_some_and(|e| TEXT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
-/// 依序偏好的編輯器：(bundle id, 預設安裝名稱, 網址 scheme)
-const EDITORS: [(&str, &str, &str); 2] = [
-    ("com.microsoft.VSCode", "Visual Studio Code.app", "vscode"),
-    (
-        "com.google.antigravity-ide",
-        "Antigravity IDE.app",
-        "antigravity-ide",
-    ),
-];
-
 /// 網址路徑用的百分比編碼：保留英數與 `/-._~`，其餘（空白、中文等）逐位元組編碼。
 fn encode_path(path: &str) -> String {
     let mut out = String::with_capacity(path.len());
@@ -167,6 +159,8 @@ pub enum OpenAction {
     OpenDefault,
     /// 用編輯器打開這個網址
     Editor(String),
+    /// 編輯器沒有網址 scheme：直接用它打開檔案（無法跳行號）
+    EditorApp(&'static str),
 }
 
 /// ⌘⌥＋點擊 → 在 Finder 顯示；文字檔且有編輯器 → 編輯器（只開不執行，腳本也安全）；
@@ -175,7 +169,7 @@ pub fn decide(
     path: &Path,
     is_dir: bool,
     reveal: bool,
-    editor_scheme: Option<&str>,
+    editor: Option<&'static Editor>,
     line: Option<u32>,
     column: Option<u32>,
 ) -> OpenAction {
@@ -184,21 +178,19 @@ pub fn decide(
     }
     if !is_dir
         && is_text_file(path)
-        && let Some(scheme) = editor_scheme
+        && let Some(editor) = editor
     {
-        return OpenAction::Editor(editor_url(scheme, &path.to_string_lossy(), line, column));
+        return match editor.scheme {
+            Some(scheme) => {
+                OpenAction::Editor(editor_url(scheme, &path.to_string_lossy(), line, column))
+            }
+            None => OpenAction::EditorApp(editor.id),
+        };
     }
     if is_runnable(path) {
         return OpenAction::Reveal;
     }
     OpenAction::OpenDefault
-}
-
-fn installed_editor() -> Option<&'static str> {
-    EDITORS
-        .iter()
-        .find(|(bundle, app, _)| crate::project::app_installed(bundle, app))
-        .map(|(_, _, scheme)| *scheme)
 }
 
 /// 開啟終端機裡被 ⌘＋點擊的路徑，規則見 [`decide`]。
@@ -208,13 +200,14 @@ pub async fn open_path(
     reveal: bool,
     line: Option<u32>,
     column: Option<u32>,
+    editor: Option<String>,
 ) -> Result<(), String> {
     // 先解開符號連結：名為 pic.png 卻指向某個 .app 的連結，要用實際的目標判斷
     let real = fs::canonicalize(&path).map_err(|_| "file_missing".to_string())?;
     let target = real.as_path();
     let meta = fs::metadata(target).map_err(|_| "file_missing".to_string())?;
     let editor = if !reveal && !meta.is_dir() && is_text_file(target) {
-        installed_editor()
+        editors::pick_installed(editor.as_deref())
     } else {
         None
     };
@@ -223,6 +216,14 @@ pub async fn open_path(
         OpenAction::Reveal => cmd.arg("-R").arg(target),
         OpenAction::OpenDefault => cmd.arg(target),
         OpenAction::Editor(url) => cmd.arg(url),
+        OpenAction::EditorApp(id) => {
+            let editor = editors::find(id).ok_or("open_failed")?;
+            return if editors::open_with(editor, &target.to_string_lossy()) {
+                Ok(())
+            } else {
+                Err("open_failed".into())
+            };
+        }
     };
     let status = cmd.status().map_err(|e| e.to_string())?;
     if status.success() {
@@ -235,6 +236,7 @@ pub async fn open_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editors::find;
 
     #[test]
     fn expands_home_relative_and_absolute_paths() {
@@ -301,7 +303,7 @@ mod tests {
     fn text_files_go_to_the_editor_with_line_and_column() {
         let p = Path::new("/p/我的 專案/src/App.tsx");
         assert_eq!(
-            decide(p, false, false, Some("vscode"), Some(313), Some(5)),
+            decide(p, false, false, find("vscode"), Some(313), Some(5)),
             OpenAction::Editor(
                 "vscode://file/p/%E6%88%91%E7%9A%84%20%E5%B0%88%E6%A1%88/src/App.tsx:313:5".into()
             )
@@ -311,7 +313,7 @@ mod tests {
                 Path::new("/p/README.md"),
                 false,
                 false,
-                Some("antigravity-ide"),
+                find("antigravity"),
                 None,
                 None
             ),
@@ -322,11 +324,31 @@ mod tests {
                 Path::new("/p/Makefile"),
                 false,
                 false,
-                Some("vscode"),
+                find("vscode"),
                 Some(3),
                 None
             ),
             OpenAction::Editor("vscode://file/p/Makefile:3".into())
+        );
+    }
+
+    #[test]
+    fn editors_without_a_url_scheme_open_the_file_directly() {
+        assert_eq!(
+            decide(
+                Path::new("/p/a.md"),
+                false,
+                false,
+                find("zed"),
+                Some(3),
+                None
+            ),
+            OpenAction::EditorApp("zed")
+        );
+        // ⌘⌥ 與會執行的資料夾仍然只在 Finder 顯示
+        assert_eq!(
+            decide(Path::new("/p/a.md"), false, true, find("zed"), None, None),
+            OpenAction::Reveal
         );
     }
 
@@ -347,7 +369,7 @@ mod tests {
                 Path::new("/p/run.sh"),
                 false,
                 false,
-                Some("vscode"),
+                find("vscode"),
                 None,
                 None
             ),
@@ -359,14 +381,14 @@ mod tests {
                 Path::new("/p/a.png"),
                 false,
                 false,
-                Some("vscode"),
+                find("vscode"),
                 None,
                 None
             ),
             OpenAction::OpenDefault
         );
         assert_eq!(
-            decide(Path::new("/p/src"), true, false, Some("vscode"), None, None),
+            decide(Path::new("/p/src"), true, false, find("vscode"), None, None),
             OpenAction::OpenDefault
         );
         assert_eq!(
@@ -374,7 +396,7 @@ mod tests {
                 Path::new("/p/a.md"),
                 false,
                 true,
-                Some("vscode"),
+                find("vscode"),
                 None,
                 None
             ),
@@ -385,7 +407,7 @@ mod tests {
                 Path::new("/Applications/X.app"),
                 true,
                 false,
-                Some("vscode"),
+                find("vscode"),
                 None,
                 None
             ),

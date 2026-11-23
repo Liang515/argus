@@ -2,13 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  Check,
+  ChevronDown,
   Code2,
   Download,
   FileText,
   FolderOpen,
   NotebookPen,
   RefreshCw,
-  Rocket,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
@@ -17,11 +18,10 @@ import type { ActivityState } from "../lib/activity";
 import { lang, type MessageKey, t, translateError } from "../lib/i18n";
 import {
   changeBadge,
+  EDITOR_DOWNLOAD,
+  type EditorInfo,
   type GitChange,
-  isAppAvailable,
   needsHandoffProtocol,
-  OPEN_TARGET_INSTALL,
-  type OpenTarget,
   openIn,
   type ProjectDoc,
   splitPath,
@@ -50,12 +50,6 @@ const TONE_CLASS_LIGHT: Record<keyof typeof TONE_CLASS, string> = {
   conflict: "text-[#c62828] font-bold",
 };
 
-const TOOLS: { target: OpenTarget; label: string; icon: typeof Code2 }[] = [
-  { target: "vscode", label: "VS Code", icon: Code2 },
-  { target: "antigravity", label: "Antigravity", icon: Rocket },
-  { target: "finder", label: "Finder", icon: FolderOpen },
-];
-
 type View = "activity" | "changes" | "handoff";
 
 const VIEWS: { id: View; label: MessageKey }[] = [
@@ -71,10 +65,13 @@ interface Props {
   /** 背景是淺色（「跟隨終端機」用了白底配色） */
   light: boolean;
   /** 有安裝的編輯器（null：還沒偵測完） */
-  apps: OpenTarget[] | null;
+  editors: EditorInfo[] | null;
+  /** 目前選用的編輯器 */
+  editor: EditorInfo | null;
+  onPickEditor: (id: string) => void;
 }
 
-export function Sidebar({ tab, status, apps, activity, light }: Props) {
+export function Sidebar({ tab, status, editors, editor, onPickEditor, activity, light }: Props) {
   const tones = light ? TONE_CLASS_LIGHT : TONE_CLASS;
   const [view, setView] = useState<View>("activity");
   const { id, path } = tab;
@@ -140,27 +137,16 @@ export function Sidebar({ tab, status, apps, activity, light }: Props) {
   return (
     <aside className="flex w-[clamp(260px,26%,420px)] shrink-0 flex-col border-l border-deck-border bg-deck-panel text-[12.5px]">
       <section className="flex gap-1 border-b border-deck-border p-2">
-        {TOOLS.map(({ target, label, icon: Icon }) => {
-          const ready = isAppAvailable(target, apps);
-          const install = OPEN_TARGET_INSTALL[target];
-          return (
-            <button
-              key={target}
-              type="button"
-              onClick={() => {
-                if (ready) void openIn(path, target);
-                else if (install) void openUrl(install);
-              }}
-              title={
-                ready ? t("side.openWith", { app: label }) : t("side.notInstalled", { app: label })
-              }
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 hover:bg-deck-hover hover:text-deck-text ${ready ? "text-deck-muted" : "text-deck-muted/50"}`}
-            >
-              {ready ? <Icon size={14} /> : <Download size={14} />}
-              {label}
-            </button>
-          );
-        })}
+        <EditorButton path={path} editors={editors} editor={editor} onPick={onPickEditor} />
+        <button
+          type="button"
+          onClick={() => void openIn(path, "finder", "Finder")}
+          title={t("side.openWith", { app: "Finder" })}
+          className="flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-deck-muted hover:bg-deck-hover hover:text-deck-text"
+        >
+          <FolderOpen size={14} />
+          Finder
+        </button>
       </section>
 
       <div className="mx-2.5 mt-2 mb-1 flex rounded-md bg-deck-bg p-0.5 text-[12px]">
@@ -296,5 +282,112 @@ export function Sidebar({ tab, status, apps, activity, light }: Props) {
         </section>
       )}
     </aside>
+  );
+}
+
+/** 「用編輯器開啟」：只列出有裝的編輯器，記住上次選的；一個都沒裝時打開 VS Code 下載頁。 */
+function EditorButton({
+  path,
+  editors,
+  editor,
+  onPick,
+}: {
+  path: string;
+  editors: EditorInfo[] | null;
+  editor: EditorInfo | null;
+  onPick: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (
+        e instanceof KeyboardEvent
+          ? e.key === "Escape"
+          : !menuRef.current?.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const button =
+    "flex items-center justify-center gap-1.5 rounded-md py-1.5 text-deck-muted hover:bg-deck-hover hover:text-deck-text";
+
+  if (editors?.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={() => void openUrl(EDITOR_DOWNLOAD.url)}
+        title={t("side.notInstalled", { app: EDITOR_DOWNLOAD.label })}
+        className={`${button} flex-1 text-deck-muted/50`}
+      >
+        <Download size={14} />
+        {EDITOR_DOWNLOAD.label}
+      </button>
+    );
+  }
+
+  const label = editor?.label ?? t("side.editor");
+  const choices = editors ?? [];
+  return (
+    <div ref={menuRef} className="relative flex flex-1">
+      <button
+        type="button"
+        disabled={!editor}
+        onClick={() => editor && void openIn(path, editor.id, editor.label)}
+        title={t("side.openWith", { app: label })}
+        className={`${button} min-w-0 flex-1 ${choices.length > 1 ? "rounded-r-none" : ""}`}
+      >
+        <Code2 size={14} className="shrink-0" />
+        <span className="truncate">{label}</span>
+      </button>
+      {choices.length > 1 && (
+        <button
+          type="button"
+          aria-label={t("side.pickEditor")}
+          aria-expanded={open}
+          title={t("side.pickEditor")}
+          onClick={() => setOpen((o) => !o)}
+          className={`${button} rounded-l-none px-1`}
+        >
+          <ChevronDown size={13} />
+        </button>
+      )}
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-8 left-0 z-40 min-w-40 rounded-lg border border-deck-border bg-deck-panel p-1 shadow-xl"
+        >
+          {choices.map((e) => (
+            <button
+              key={e.id}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                onPick(e.id);
+                void openIn(path, e.id, e.label);
+              }}
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] text-deck-text hover:bg-deck-hover"
+            >
+              <span className="w-3.5">
+                {e.id === editor?.id && <Check size={13} className="text-deck-accent" />}
+              </span>
+              {e.label}
+            </button>
+          ))}
+          <p className="px-2.5 pt-1.5 pb-1 text-[11px] text-deck-muted">{t("side.editorFooter")}</p>
+        </div>
+      )}
+    </div>
   );
 }

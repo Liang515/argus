@@ -23,7 +23,13 @@ import {
 import { nextFontSize, parseFontSize } from "./lib/fontSize";
 import { pushRecent } from "./lib/fuzzy";
 import { t, translateError } from "./lib/i18n";
-import { isAppAvailable, OPEN_TARGET_LABEL, type OpenTarget, openIn } from "./lib/project";
+import {
+  type EditorInfo,
+  loadPreferredEditor,
+  openIn,
+  pickEditor,
+  savePreferredEditor,
+} from "./lib/project";
 import type { ClaudeStatus } from "./lib/status";
 import {
   activeAfterClose,
@@ -60,8 +66,6 @@ const BRANCH_REFRESH_MS = 5000;
 const STALE_CHECK_MS = 2000;
 const DETECT_THROTTLE_MS = 5000;
 const DETECT_RELAXED_MS = 60_000;
-/** detect_apps 偵測的編輯器數量（VS Code、Antigravity） */
-const EDITOR_COUNT = 2;
 const SIDEBAR_KEY = "argus.sidebar";
 const THEME_KEY = "argus.theme";
 const FONT_SIZE_KEY = "argus.fontSize";
@@ -132,7 +136,13 @@ export default function App() {
   const [activities, setActivities] = useState<Record<string, ActivityState>>({});
   const [installed, setInstalled] = useState<AgentId[]>(["claude"]);
   // 有安裝的編輯器；null 表示還沒偵測完
-  const [apps, setApps] = useState<OpenTarget[] | null>(null);
+  const [editors, setEditors] = useState<EditorInfo[] | null>(null);
+  const [editorId, setEditorId] = useState(loadPreferredEditor);
+  const editor = pickEditor(editorId, editors ?? []);
+  const chooseEditor = useCallback((id: string) => {
+    setEditorId(id);
+    savePreferredEditor(id);
+  }, []);
   const detectRef = useRef<(force?: boolean) => void>(() => {});
   const [update, setUpdate] = useState<Update | null>(null);
   const [updating, setUpdating] = useState(false);
@@ -206,13 +216,14 @@ export default function App() {
       last = Date.now();
       Promise.all([
         invoke<string[]>("detect_agents").then((found) => found.filter(isAgentId)),
-        invoke<OpenTarget[]>("detect_apps"),
+        invoke<{ installed: EditorInfo[]; total: number }>("detect_apps"),
       ])
         .then(([agents, editors]) => {
           setInstalled(agents);
-          setApps(editors);
+          setEditors(editors.installed);
           hasAgent = agents.length > 0;
-          complete = agents.length === AGENT_IDS.length && editors.length === EDITOR_COUNT;
+          complete =
+            agents.length === AGENT_IDS.length && editors.installed.length === editors.total;
         })
         .catch(() => {});
     };
@@ -665,12 +676,14 @@ export default function App() {
       })),
     ];
     if (activeTab) {
-      for (const target of ["vscode", "antigravity", "finder"] as OpenTarget[]) {
-        if (!isAppAvailable(target, apps)) continue;
+      for (const { id, label } of [...(editors ?? []), { id: "finder", label: "Finder" }]) {
         list.push({
-          id: `open-${target}`,
-          label: t("app.openIn", { app: OPEN_TARGET_LABEL[target] }),
-          run: () => void openIn(activeTab.path, target),
+          id: `open-${id}`,
+          label: t("app.openIn", { app: label }),
+          run: () => {
+            if (id !== "finder") chooseEditor(id);
+            void openIn(activeTab.path, id, label);
+          },
         });
       }
       const mode = buttonMode(activeStatus, activeRunning);
@@ -727,7 +740,8 @@ export default function App() {
     return list;
   }, [
     activeTab,
-    apps,
+    editors,
+    chooseEditor,
     activeStatus,
     activeRunning,
     installed,
@@ -806,7 +820,9 @@ export default function App() {
           <Sidebar
             tab={activeTab}
             status={statuses[activeTab.id] ?? "off"}
-            apps={apps}
+            editors={editors}
+            editor={editor}
+            onPickEditor={chooseEditor}
             activity={activities[activeTab.id] ?? EMPTY_ACTIVITY}
             light={lightUi}
           />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeBadge, isAppAvailable, needsHandoffProtocol, splitPath } from "./project";
+import { changeBadge, needsHandoffProtocol, pickEditor, splitPath } from "./project";
 
 describe("changeBadge", () => {
   it("對應常見的 git 狀態", () => {
@@ -21,14 +21,16 @@ describe("splitPath", () => {
   });
 });
 
-describe("isAppAvailable", () => {
-  it("沒偵測到的編輯器不能用，Finder 一定能用", () => {
-    expect(isAppAvailable("vscode", ["vscode"])).toBe(true);
-    expect(isAppAvailable("antigravity", ["vscode"])).toBe(false);
-    expect(isAppAvailable("finder", [])).toBe(true);
+describe("pickEditor", () => {
+  const vscode = { id: "vscode", label: "VS Code" };
+  const cursor = { id: "cursor", label: "Cursor" };
+  it("選過且有裝就用它，否則用第一個有裝的", () => {
+    expect(pickEditor("cursor", [vscode, cursor])).toBe(cursor);
+    expect(pickEditor("zed", [vscode, cursor])).toBe(vscode);
+    expect(pickEditor(null, [cursor])).toBe(cursor);
   });
-  it("還沒偵測完時先當成有裝", () => {
-    expect(isAppAvailable("antigravity", null)).toBe(true);
+  it("一個編輯器都沒裝", () => {
+    expect(pickEditor("vscode", [])).toBeNull();
   });
 });
 

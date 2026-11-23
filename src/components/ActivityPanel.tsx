@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import { ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -9,6 +8,7 @@ import {
   todoProgress,
 } from "../lib/activity";
 import { type MessageKey, t } from "../lib/i18n";
+import { openPath } from "../lib/project";
 
 const KIND_LABEL: Record<ActivityItem["kind"], MessageKey> = {
   prompt: "act.you",
@@ -100,14 +100,7 @@ function ActivityRow({
           {item.path && (
             <button
               type="button"
-              onClick={() =>
-                void invoke("open_path", {
-                  path: item.path,
-                  reveal: false,
-                  line: null,
-                  column: null,
-                }).catch(() => {})
-              }
+              onClick={() => item.path && void openPath(item.path, false).catch(() => {})}
               title={t("act.openFile")}
               aria-label={t("act.openFile")}
               className="rounded p-0.5 text-deck-muted opacity-0 group-hover:opacity-100 hover:text-deck-text focus:opacity-100"

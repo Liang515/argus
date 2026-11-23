@@ -42,6 +42,9 @@ const zh = {
   "palette.openPath": "開啟 {path}",
 
   "side.openWith": "用 {app} 開啟這個專案",
+  "side.editor": "編輯器",
+  "side.pickEditor": "選擇編輯器",
+  "side.editorFooter": "選過的會記住，⌘＋點擊檔案路徑也用它開",
   "side.notInstalled": "還沒安裝 {app}。點一下打開下載頁，裝好後切回 Argus 就能一鍵開啟專案",
   "side.gitChanges": "Git 變更",
   "side.tabActivity": "活動",
@@ -231,6 +234,9 @@ const en: Record<MessageKey, string> = {
   "palette.openPath": "Open {path}",
 
   "side.openWith": "Open this project in {app}",
+  "side.editor": "Editor",
+  "side.pickEditor": "Choose editor",
+  "side.editorFooter": "Remembered, and used for ⌘-clicked file paths too",
   "side.notInstalled":
     "{app} isn't installed. Click to open its download page. Once it's installed, come back to Argus to open projects in it.",
   "side.gitChanges": "Git changes",

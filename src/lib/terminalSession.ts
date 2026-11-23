@@ -11,6 +11,7 @@ import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
 import { DEFAULT_FONT_SIZE } from "./fontSize";
 import { t } from "./i18n";
+import { openPath } from "./project";
 import {
   backgroundSessionId,
   type ClaudeStatus,
@@ -297,12 +298,7 @@ export class TerminalSession {
         decorations: { underline: true, pointerCursor: true },
         activate: (event) => {
           if (!event.metaKey) return;
-          void invoke("open_path", {
-            path: target.path,
-            reveal: event.altKey,
-            line: c.line ?? null,
-            column: c.column ?? null,
-          }).catch(() => {});
+          void openPath(target.path, event.altKey, c.line, c.column).catch(() => {});
         },
       });
     });
