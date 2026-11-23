@@ -43,12 +43,12 @@ fn with_target_lookup(script: &str) -> String {
     script.replace("__ARGUS_TARGET__", TARGET_LOOKUP)
 }
 
-/// Claude 的 hook：再代入 Argus 執行檔路徑（整理活動摘要用；沒有就不送摘要）。
-fn claude_hook_script(argus_bin: Option<&Path>) -> String {
+/// 把目標終端機查詢與 Argus 執行檔路徑代入 hook 腳本（沒有執行檔就不送活動摘要）。
+fn hook_script_with(script: &str, argus_bin: Option<&Path>) -> String {
     let bin = argus_bin
         .map(|p| shell_quote(&p.to_string_lossy()))
         .unwrap_or_else(|| "''".into());
-    with_target_lookup(HOOK_SCRIPT).replace("__ARGUS_BIN__", &bin)
+    with_target_lookup(script).replace("__ARGUS_BIN__", &bin)
 }
 
 const HOOK_SCRIPT: &str = r#"#!/bin/sh
@@ -90,13 +90,20 @@ const AGY_PLUGIN_JSON: &str = r#"{
 "#;
 
 const AGY_HOOK_SCRIPT: &str = r#"#!/bin/sh
-# Argus：把 agy 狀態寫回所屬分頁（由 Argus 自動產生，請勿手動修改）
+# Argus：把 agy 狀態與活動摘要寫回所屬分頁（由 Argus 自動產生，請勿手動修改）
 # 不在 Argus 裡（沒有 ARGUS_TTY）時什麼都不做。
-cat > /dev/null
+payload=$(cat)
 if [ -n "$ARGUS_TTY" ]; then
 __ARGUS_TARGET__
+  osc=$(printf '\033]7777;argus;%s;agy\007' "$1")
+  # 側欄「活動」面板：請 Argus 執行檔把原始資料整理成一行摘要，和燈號一起送
+  argus_bin=__ARGUS_BIN__
+  if [ -x "$argus_bin" ]; then
+    summary=$(printf '%s' "$payload" | "$argus_bin" --hook-summary 2>/dev/null)
+    [ -n "$summary" ] && osc="$osc$(printf '\033]7777;argus-activity;%s\007' "$summary")"
+  fi
   # 寫入最多等 1 秒，終端機卡住時不拖住 agy
-  printf '\033]7777;argus;%s;agy\007' "$1" > "$target" 2>/dev/null &
+  printf '%s' "$osc" > "$target" 2>/dev/null &
   writer=$!
   ( sleep 1; kill "$writer" 2>/dev/null ) > /dev/null 2>&1 &
   watchdog=$!
@@ -120,7 +127,15 @@ const AGY_HOOKS_JSON: &str = r#"{
 "#;
 
 /// 只有已經裝了 agy（有 `~/.gemini/config`）才安裝，回傳是否有安裝。
+#[cfg(test)]
 pub fn install_agy_plugin(gemini_config: &Path) -> io::Result<bool> {
+    install_agy_plugin_with_bin(gemini_config, None)
+}
+
+pub fn install_agy_plugin_with_bin(
+    gemini_config: &Path,
+    argus_bin: Option<&Path>,
+) -> io::Result<bool> {
     if !gemini_config.is_dir() {
         return Ok(false);
     }
@@ -131,7 +146,7 @@ pub fn install_agy_plugin(gemini_config: &Path) -> io::Result<bool> {
     fs::write(dir.join("hooks.json"), AGY_HOOKS_JSON)?;
     fs::write(
         dir.join("argus-hook.sh"),
-        with_target_lookup(AGY_HOOK_SCRIPT),
+        hook_script_with(AGY_HOOK_SCRIPT, argus_bin),
     )?;
     Ok(true)
 }
@@ -230,7 +245,7 @@ pub fn install_with_bin(dir: &Path, argus_bin: Option<&Path>) -> io::Result<Inte
     fs::create_dir_all(&zsh_dir)?;
 
     let hook_script = dir.join("hook.sh");
-    fs::write(&hook_script, claude_hook_script(argus_bin))?;
+    fs::write(&hook_script, hook_script_with(HOOK_SCRIPT, argus_bin))?;
 
     let hooks_file = dir.join("hooks.json");
     fs::write(
@@ -250,13 +265,13 @@ pub fn install_with_bin(dir: &Path, argus_bin: Option<&Path>) -> io::Result<Inte
 pub fn install() -> io::Result<Integration> {
     let home =
         dirs::home_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "找不到家目錄"))?;
-    if let Err(e) = install_agy_plugin(&home.join(".gemini").join("config")) {
+    let exe = std::env::current_exe().ok();
+    if let Err(e) =
+        install_agy_plugin_with_bin(&home.join(".gemini").join("config"), exe.as_deref())
+    {
         eprintln!("agy 狀態外掛安裝失敗：{e}");
     }
-    install_with_bin(
-        &home.join(".argus"),
-        std::env::current_exe().ok().as_deref(),
-    )
+    install_with_bin(&home.join(".argus"), exe.as_deref())
 }
 
 #[cfg(test)]
@@ -456,6 +471,25 @@ mod tests {
         assert_eq!(
             run_hook(dir.path(), "done", "{}"),
             "\x1b]7777;argus;done\x07\x1b]7777;argus-activity;{\"k\":\"stop\"}\x07"
+        );
+
+        let config = dir.path().join("config");
+        fs::create_dir_all(&config).unwrap();
+        install_agy_plugin_with_bin(&config, Some(&fake_bin)).unwrap();
+        let tty = dir.path().join("agy-tty");
+        fs::write(&tty, "").unwrap();
+        let out = Command::new("sh")
+            .arg(config.join("plugins/argus/argus-hook.sh"))
+            .arg("running")
+            .env("ARGUS_TTY", &tty)
+            .env("ARGUS_NO_TTY_LOOKUP", "1")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "{}");
+        assert_eq!(
+            fs::read_to_string(&tty).unwrap(),
+            "\x1b]7777;argus;running;agy\x07\x1b]7777;argus-activity;{\"k\":\"stop\"}\x07"
         );
     }
 

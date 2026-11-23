@@ -21,10 +21,20 @@ describe("parseActivity", () => {
       target: "npm test",
     });
     expect(parseActivity('{"k":"stop"}')).toEqual({ k: "stop" });
+    expect(
+      parseActivity('{"k":"done","id":"c1","verb":"run","target":"Run tests","ok":true}'),
+    ).toEqual({
+      k: "done",
+      id: "c1",
+      verb: "run",
+      target: "Run tests",
+      ok: true,
+    });
   });
   it("格式不對就忽略", () => {
     expect(parseActivity("not json")).toBeNull();
     expect(parseActivity('{"k":"start","verb":"hack","target":"x"}')).toBeNull();
+    expect(parseActivity('{"k":"done","verb":"run","target":"x"}')).toBeNull();
     expect(parseActivity('{"k":"end"}')).toBeNull();
     expect(
       parseActivity('{"k":"todos","items":[null,1,{"text":"ok","status":"pending"}]}'),
@@ -78,6 +88,26 @@ describe("applyActivity", () => {
     expect(todoProgress(s.todos)).toEqual({ done: 1, total: 3 });
     s = applyActivity(s, { k: "prompt", text: "下一個任務" }, 9);
     expect(s.todos).toEqual([]);
+  });
+  it("agy：同一輪重複的 PreInvocation 訊息去重，Stop 後下一輪可再顯示，PostToolUse 一步到位", () => {
+    const s = run([
+      [1000, { k: "prompt", text: "幫我看這段", dedup: true }],
+      [2000, { k: "done", id: "c1", verb: "read", target: "src/App.tsx", ok: true }],
+      [3000, { k: "prompt", text: "幫我看這段", dedup: true }],
+      [
+        4000,
+        { k: "done", id: "c2", verb: "run", target: "Run tests", detail: "npm test", ok: false },
+      ],
+      [5000, { k: "stop" }],
+      [6000, { k: "prompt", text: "幫我看這段", dedup: true }],
+    ]);
+    expect(s.items.map((i) => [i.kind, i.target, i.status])).toEqual([
+      ["prompt", "幫我看這段", undefined],
+      ["read", "src/App.tsx", "ok"],
+      ["run", "Run tests", "fail"],
+      ["prompt", "幫我看這段", undefined],
+    ]);
+    expect(s.items[2]?.detail).toBe("npm test");
   });
   it("最多保留固定筆數", () => {
     let s = EMPTY_ACTIVITY;

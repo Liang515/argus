@@ -1,4 +1,4 @@
-//! 側欄「活動」面板的資料：把 Claude Code hook 的原始 JSON 整理成一行精簡摘要。
+//! 側欄「活動」面板的資料：把 Claude Code 與 agy hook 的原始 JSON 整理成一行精簡摘要。
 //!
 //! hook 會執行 `argus --hook-summary`，從 stdin 讀原始資料、把摘要印到 stdout，
 //! 再和燈號一樣用 OSC 7777 寫到 agent 所在的終端機（背景對話被 attach 時也會轉送）。
@@ -23,8 +23,12 @@ const MAX_PAYLOAD: u64 = 2 * 1024 * 1024;
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(tag = "k", rename_all = "lowercase")]
 pub enum Event {
-    /// 使用者送出的訊息
-    Prompt { text: String },
+    /// 使用者送出的訊息（`dedup` 為 true 時，同一輪內重複送出相同訊息會略過，供 agy PreInvocation 使用）
+    Prompt {
+        text: String,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        dedup: bool,
+    },
     /// 開始用一個工具
     Start {
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -43,6 +47,18 @@ pub enum Event {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<String>,
         ok: bool,
+    },
+    /// 一步到位的已完成動作（沒有 PreToolUse 的 agent，例如 agy）
+    Done {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<String>,
+        verb: &'static str,
+        target: String,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        add: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
     },
     /// Claude 的計畫清單（TodoWrite）
     Todos { items: Vec<Todo> },
@@ -152,10 +168,127 @@ fn failed(response: Option<&Value>) -> bool {
             .unwrap_or(false)
 }
 
+fn first_str<'a>(v: &'a Value, keys: &[&str]) -> &'a str {
+    keys.iter()
+        .map(|k| str_of(v, k))
+        .find(|s| !s.is_empty())
+        .unwrap_or("")
+}
+
+/// agy 工具名稱 → (動作, 對象, 增加行數, 滑鼠懸停完整內容)。
+fn describe_agy(
+    tool: &str,
+    args: &Value,
+    cwd: Option<&str>,
+) -> (&'static str, String, Option<i64>, Option<String>) {
+    let path = |keys: &[&str]| display_path(first_str(args, keys), cwd);
+    match tool {
+        "read_file" | "view_file" | "view_file_outline" | "view_code_item" => (
+            "read",
+            path(&["Path", "AbsolutePath", "FilePath"]),
+            None,
+            None,
+        ),
+        "write_file" | "write_to_file" => {
+            let content = first_str(args, &["Content", "CodeContent"]);
+            (
+                "write",
+                path(&["Path", "TargetFile"]),
+                Some(line_count(content)),
+                None,
+            )
+        }
+        "edit_file" => (
+            "edit",
+            path(&["Path"]),
+            Some(line_count(str_of(args, "Replacement")) - line_count(str_of(args, "Target"))),
+            None,
+        ),
+        "replace_file_content" => (
+            "edit",
+            path(&["TargetFile"]),
+            Some(
+                line_count(str_of(args, "ReplacementContent"))
+                    - line_count(str_of(args, "TargetContent")),
+            ),
+            None,
+        ),
+        "multi_replace_file_content" => ("edit", path(&["TargetFile"]), None, None),
+        "run_command" => {
+            let command = str_of(args, "CommandLine").trim();
+            let summary = str_of(args, "toolSummary").trim();
+            let detail = (!command.is_empty()).then(|| clip_to(command, MAX_DETAIL));
+            let target = if summary.is_empty() {
+                clip(command)
+            } else {
+                clip(summary)
+            };
+            ("run", target, None, detail)
+        }
+        "grep_search" | "find_by_name" | "list_dir" => (
+            "search",
+            clip(first_str(args, &["Query", "Pattern", "DirectoryPath"])),
+            None,
+            None,
+        ),
+        "search_web" | "read_url_content" => {
+            ("web", clip(first_str(args, &["query", "Url"])), None, None)
+        }
+        "invoke_subagent" => (
+            "agent",
+            clip(first_str(args, &["Role", "Prompt"])),
+            None,
+            None,
+        ),
+        "call_mcp_tool" => (
+            "other",
+            clip(first_str(args, &["ToolName", "ServerName"])),
+            None,
+            None,
+        ),
+        other => ("other", clip(other), None, None),
+    }
+}
+
+/// 整理一筆 agy hook 資料（camelCase 格式）。
+fn summarize_agy(v: &Value, cwd: Option<&str>) -> Option<Event> {
+    match str_of(v, "hookEventName") {
+        "PreInvocation" => {
+            let text = clip(str_of(v, "lastUserInput"));
+            (!text.is_empty()).then_some(Event::Prompt { text, dedup: true })
+        }
+        "PostToolUse" => {
+            let call = v.get("toolCall")?;
+            let tool = str_of(call, "name");
+            if tool.is_empty() {
+                return None;
+            }
+            let id = call.get("id").and_then(Value::as_str).map(str::to_string);
+            let args = call.get("args").unwrap_or(&Value::Null);
+            let (verb, target, add, detail) = describe_agy(tool, args, cwd);
+            let ok = str_of(v, "error").trim().is_empty();
+            Some(Event::Done {
+                id,
+                verb,
+                target,
+                ok,
+                add,
+                detail,
+            })
+        }
+        "Stop" => Some(Event::Stop),
+        _ => None,
+    }
+}
+
 /// 整理一筆 hook 資料；不需要顯示的事件（SessionStart、Notification…）回傳 None。
 pub fn summarize(payload: &str) -> Option<Event> {
     let v: Value = serde_json::from_str(payload).ok()?;
     let cwd = v.get("cwd").and_then(Value::as_str);
+    // agy hook 用 camelCase（hookEventName）；Claude Code 用 snake_case（hook_event_name）
+    if v.get("hookEventName").is_some() {
+        return summarize_agy(&v, cwd);
+    }
     let tool = str_of(&v, "tool_name");
     let id = v
         .get("tool_use_id")
@@ -165,6 +298,7 @@ pub fn summarize(payload: &str) -> Option<Event> {
     match str_of(&v, "hook_event_name") {
         "UserPromptSubmit" => Some(Event::Prompt {
             text: clip(str_of(&v, "prompt")),
+            dedup: false,
         }),
         "PreToolUse" if tool == "TodoWrite" => {
             let items = input
@@ -242,12 +376,97 @@ mod tests {
         assert_eq!(
             run(json!({"hook_event_name": "UserPromptSubmit", "prompt": "做側欄活動面板\n第二行"})),
             Some(Event::Prompt {
-                text: "做側欄活動面板".into()
+                text: "做側欄活動面板".into(),
+                dedup: false,
             })
         );
         assert_eq!(run(json!({"hook_event_name": "Stop"})), Some(Event::Stop));
         assert_eq!(run(json!({"hook_event_name": "SessionStart"})), None);
         assert_eq!(summarize("not json"), None);
+    }
+
+    #[test]
+    fn agy_hooks_become_activity_events() {
+        assert_eq!(
+            run(json!({
+                "hookEventName": "PreInvocation",
+                "lastUserInput": "幫我修這個 bug\n第二行"
+            })),
+            Some(Event::Prompt {
+                text: "幫我修這個 bug".into(),
+                dedup: true,
+            })
+        );
+        assert_eq!(
+            run(json!({"hookEventName": "PreInvocation", "lastUserInput": "   "})),
+            None
+        );
+        assert_eq!(
+            run(json!({
+                "hookEventName": "PostToolUse",
+                "cwd": "/p",
+                "toolCall": {
+                    "id": "call_1",
+                    "name": "run_command",
+                    "args": {
+                        "CommandLine": "cargo test --quiet",
+                        "toolSummary": "Run Rust tests"
+                    }
+                }
+            })),
+            Some(Event::Done {
+                id: Some("call_1".into()),
+                verb: "run",
+                target: "Run Rust tests".into(),
+                ok: true,
+                add: None,
+                detail: Some("cargo test --quiet".into()),
+            })
+        );
+        assert_eq!(
+            run(json!({
+                "hookEventName": "PostToolUse",
+                "cwd": "/p",
+                "error": "exit status 1",
+                "toolCall": {
+                    "id": "call_2",
+                    "name": "edit_file",
+                    "args": {
+                        "Path": "/p/src/lib.rs",
+                        "Target": "a",
+                        "Replacement": "a\nb\nc"
+                    }
+                }
+            })),
+            Some(Event::Done {
+                id: Some("call_2".into()),
+                verb: "edit",
+                target: "src/lib.rs".into(),
+                ok: false,
+                add: Some(2),
+                detail: None,
+            })
+        );
+        assert_eq!(
+            run(json!({
+                "hookEventName": "PostToolUse",
+                "cwd": "/p",
+                "toolCall": {
+                    "name": "read_file",
+                    "args": { "Path": "/p/README.md" }
+                }
+            })),
+            Some(Event::Done {
+                id: None,
+                verb: "read",
+                target: "README.md".into(),
+                ok: true,
+                add: None,
+                detail: None,
+            })
+        );
+        assert_eq!(run(json!({"hookEventName": "Stop"})), Some(Event::Stop));
+        assert_eq!(run(json!({"hookEventName": "SessionStart"})), None);
     }
 
     #[test]

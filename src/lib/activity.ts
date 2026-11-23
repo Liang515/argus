@@ -4,9 +4,18 @@ export type Verb = "read" | "edit" | "write" | "run" | "search" | "web" | "agent
 
 /** 後端 activity.rs 的 Event（`k` 是種類）。 */
 export type ActivityEvent =
-  | { k: "prompt"; text: string }
+  | { k: "prompt"; text: string; dedup?: boolean }
   | { k: "start"; id?: string; verb: Verb; target: string; add?: number; detail?: string }
   | { k: "end"; id?: string; ok: boolean }
+  | {
+      k: "done";
+      id?: string;
+      verb: Verb;
+      target: string;
+      ok: boolean;
+      add?: number;
+      detail?: string;
+    }
   | { k: "todos"; items: { text: string; status: string }[] }
   | { k: "stop" };
 
@@ -35,6 +44,8 @@ export interface ActivityState {
   items: ActivityItem[];
   /** 下一筆的 key（React 用） */
   next: number;
+  /** 本輪已顯示的使用者訊息（供 agy PreInvocation 同一輪重複送出時去重） */
+  turnPrompt?: string;
 }
 
 export const EMPTY_ACTIVITY: ActivityState = { todos: [], items: [], next: 0 };
@@ -55,6 +66,10 @@ export function parseActivity(json: string): ActivityEvent | null {
         return VERBS.has(e.verb) && typeof e.target === "string" ? e : null;
       case "end":
         return typeof e.ok === "boolean" ? e : null;
+      case "done":
+        return VERBS.has(e.verb) && typeof e.target === "string" && typeof e.ok === "boolean"
+          ? e
+          : null;
       case "todos":
         // 終端機輸出可能被偽造（例如 cat 一個測試檔），只留格式正確的項目
         if (!Array.isArray(e.items)) return null;
@@ -102,8 +117,13 @@ export function applyActivity(
   };
   switch (event.k) {
     case "prompt":
-      // 新的一輪：上一輪的計畫已經不一定適用，先清掉，等 Claude 重新列
-      return { ...push({ at: now, kind: "prompt", target: event.text }), todos: [] };
+      if (event.dedup && state.turnPrompt === event.text) return state;
+      // 新的一輪：上一輪的計畫已經不一定適用，先清掉，等 agent 重新列
+      return {
+        ...push({ at: now, kind: "prompt", target: event.text }),
+        todos: [],
+        turnPrompt: event.text,
+      };
     case "start":
       return push({
         id: event.id,
@@ -113,6 +133,16 @@ export function applyActivity(
         add: event.add,
         detail: event.detail,
         status: "running",
+      });
+    case "done":
+      return push({
+        id: event.id,
+        at: now,
+        kind: event.verb,
+        target: event.target,
+        add: event.add,
+        detail: event.detail,
+        status: event.ok ? "ok" : "fail",
       });
     case "end": {
       const i = findRunning(state.items, event.id);
@@ -124,13 +154,16 @@ export function applyActivity(
     case "todos":
       return { ...state, todos: event.items.map(normalizeTodo) };
     case "stop": {
-      // 回覆結束了還在「執行中」的（例如被中斷、沒收到結束事件）改成不確定，不要一直轉圈
-      if (!state.items.some((it) => it.status === "running")) return state;
+      const hasRunning = state.items.some((it) => it.status === "running");
+      if (!hasRunning && state.turnPrompt === undefined) return state;
       return {
         ...state,
-        items: state.items.map((it) =>
-          it.status === "running" ? { ...it, status: "unknown" as const } : it,
-        ),
+        turnPrompt: undefined,
+        items: hasRunning
+          ? state.items.map((it) =>
+              it.status === "running" ? { ...it, status: "unknown" as const } : it,
+            )
+          : state.items,
       };
     }
   }

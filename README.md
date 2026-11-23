@@ -10,7 +10,7 @@ A terminal workspace for coding agents on macOS. Keep every project in its own t
 
 - **Status lights on every tab**: running (pulsing yellow), waiting for your confirmation (red), done (green). You don't need to switch tabs to know who needs you.
 - **One launcher for several agents**: start or resume Claude Code, `agy` or Codex from the tab bar. If the tab is busy, the chosen agent opens in a new tab for the same folder instead of interrupting the current one.
-- **Project sidebar** with three views: **Activity** (Claude's to-do plan with a progress bar, and each step as it happens: files read and edited, commands run with ✓/✗ and duration), **Changes** (live Git status) and **Handoff** (the project's `HANDOFF.md` or `CLAUDE.md`, rendered as it is updated).
+- **Project sidebar** with three views: **Activity** (Claude's to-do plan with a progress bar, and each step as Claude or `agy` works: files read and edited, commands run with ✓/✗ and duration), **Changes** (live Git status) and **Handoff** (the project's `HANDOFF.md` or `CLAUDE.md`, rendered as it is updated).
 - **Handoff protocol**: one click adds rules to the project's `CLAUDE.md` so the agent keeps `HANDOFF.md` up to date. When you switch agents or people, the next one can pick up where the last one stopped.
 - **Several tabs per project**: same folder, or a new Git worktree so two agents don't overwrite each other (⌘⇧T). Tab names stay readable; when they don't fit, an "all tabs" menu lists them and lights up if a hidden tab needs you.
 - **Open the project in VS Code, Antigravity or Finder**. Editors that aren't installed are shown with a link to their download page.
@@ -23,13 +23,13 @@ A terminal workspace for coding agents on macOS. Keep every project in its own t
 
 ## Agent support
 
-|                                 | Claude Code | agy | Codex                          |
-| ------------------------------- | ----------- | --- | ------------------------------ |
-| Start / resume from the tab bar | ✓           | ✓   | ✓                              |
-| Running and done lights         | ✓           | ✓   | –                              |
-| Waiting-for-you light           | ✓           | –   | best effort (from screen text) |
-| New chat / switch chat buttons  | ✓           | –   | –                              |
-| Activity panel                  | ✓           | –   | –                              |
+|                                 | Claude Code | agy       | Codex                          |
+| ------------------------------- | ----------- | --------- | ------------------------------ |
+| Start / resume from the tab bar | ✓           | ✓         | ✓                              |
+| Running and done lights         | ✓           | ✓         | –                              |
+| Waiting-for-you light           | ✓           | –         | best effort (from screen text) |
+| New chat / switch chat buttons  | ✓           | –         | –                              |
+| Activity panel                  | ✓           | ✓ (steps) | –                              |
 
 The interface follows your macOS language: Traditional Chinese or English.
 

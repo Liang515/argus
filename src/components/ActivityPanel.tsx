@@ -61,7 +61,7 @@ function Result({ item }: { item: ActivityItem }) {
         ? `${item.add > 0 ? "+" : ""}${item.add}`
         : "";
   if (item.status === "ok" && item.kind === "run")
-    return <span className="text-status-done">✓ {extra}</span>;
+    return <span className="text-status-done">{extra ? `✓ ${extra}` : "✓"}</span>;
   return <span className="text-deck-muted">{extra}</span>;
 }
 

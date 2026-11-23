@@ -47,7 +47,7 @@ const zh = {
   "side.tabActivity": "活動",
   "side.tabChanges": "變更",
   "side.tabHandoff": "交接",
-  "act.empty": "Claude 開始工作後，這裡會即時顯示它的計畫和每一步動作。",
+  "act.empty": "Claude 或 agy 開始工作後，這裡會即時顯示計畫和每一步動作。",
   "act.plan": "計畫",
   "act.recent": "最近動作",
   "act.you": "你",
@@ -230,7 +230,8 @@ const en: Record<MessageKey, string> = {
   "side.tabActivity": "Activity",
   "side.tabChanges": "Changes",
   "side.tabHandoff": "Handoff",
-  "act.empty": "Once Claude starts working, its plan and each step show up here as they happen.",
+  "act.empty":
+    "Once Claude or agy starts working, its plan and each step show up here as they happen.",
   "act.plan": "Plan",
   "act.recent": "Recent",
   "act.you": "You",
