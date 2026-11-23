@@ -320,7 +320,7 @@ function AgentMenu({
                         ? undefined
                         : t("agent.notInstalledTitle", { agent: AGENTS[agent].label })
                     }
-                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] text-deck-text hover:bg-deck-hover"
+                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] whitespace-nowrap text-deck-text hover:bg-deck-hover"
                   >
                     <span className="w-3.5">
                       {agent === checked && <Check size={13} className="text-deck-accent" />}
@@ -354,7 +354,7 @@ function AgentMenu({
                         setOpen(false);
                         onCustom(agent);
                       }}
-                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] text-deck-text hover:bg-deck-hover"
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] whitespace-nowrap text-deck-text hover:bg-deck-hover"
                     >
                       <span className="w-3.5" />
                       <span className="flex-1 truncate">{agent.name}</span>
