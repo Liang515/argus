@@ -16,7 +16,7 @@ A terminal workspace for coding agents on macOS. Keep every project in its own t
 - **Open the project in VS Code, Antigravity or Finder**. Editors that aren't installed are shown with a link to their download page.
 - **⌘-click file paths in the terminal**: code and text files open in VS Code or Antigravity at the right line (`src/App.tsx:313`), other files in their default app. ⌘⌥-click reveals the file in Finder. Apps, scripts and installers are never run from a click.
 - **macOS editing keys in the terminal**: ⌘← / ⌘→ for line start/end, ⌥← / ⌥→ by word, ⌘⌫ to delete to line start, ⇧↩ for a newline in Claude Code.
-- **Keyboard first**: ⌘K project and action switcher, ⌘1–9 to jump to a tab, ⌘/ for all shortcuts.
+- **Keyboard first**: ⌘K project and action switcher, ⌘1–9 to jump to a tab, ⌘+ / ⌘− / ⌘0 to zoom the terminal text, ⌘/ for all shortcuts.
 - **Color themes**: Argus, Clear Dark, or match your macOS Terminal profile (⌘K, search "theme").
 - **Updates itself**: a small "Update" button appears when a new release is out; one click downloads, installs and restarts.
 - **Easy agent setup**: agents that aren't installed show their official install command, ready to run in a new tab.
@@ -36,6 +36,13 @@ The interface follows your macOS language: Traditional Chinese or English.
 ## Install
 
 Download the latest `Argus_*.dmg` from [Releases](https://github.com/Liang515/argus/releases), open it and drag Argus into Applications. The app is signed and notarized by Apple, so it opens normally.
+
+Or install with [Homebrew](https://brew.sh):
+
+```sh
+brew trust --tap liang515/tap   # only needed once
+brew install --cask liang515/tap/argus
+```
 
 Requirements:
 

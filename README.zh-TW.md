@@ -16,7 +16,7 @@
 - **用 VS Code、Antigravity 或 Finder 開啟專案**。沒安裝的編輯器會顯示下載連結。
 - **在終端機裡 ⌘＋點擊檔案路徑**：程式碼與文字檔用 VS Code 或 Antigravity 打開並跳到指定行（例如 `src/App.tsx:313`），其他檔案用系統預設的 App。⌘⌥＋點擊在 Finder 顯示。.app、腳本、安裝檔不會因為點擊而被執行。
 - **終端機裡也能用 macOS 編輯鍵**：⌘← / ⌘→ 到行首／行尾、⌥← / ⌥→ 跳一個字、⌘⌫ 刪到行首、⇧↩ 在 Claude Code 裡換行。
-- **鍵盤優先**：⌘K 切換專案與動作、⌘1–9 跳到分頁、⌘/ 看所有快捷鍵。
+- **鍵盤優先**：⌘K 切換專案與動作、⌘1–9 跳到分頁、⌘+ / ⌘− / ⌘0 縮放終端機文字、⌘/ 看所有快捷鍵。
 - **配色**：Argus、Clear Dark，或跟隨 macOS「終端機」的配色（⌘K 搜尋「配色」）。
 - **自動更新**：有新版時分頁列會出現「新版」按鈕，點一下就下載、安裝並重開。
 - **輕鬆安裝 agent**：沒裝的 agent 會顯示官方安裝指令，可以直接在新分頁執行。
@@ -36,6 +36,13 @@
 ## 安裝
 
 從 [Releases](https://github.com/Liang515/argus/releases) 下載最新的 `Argus_*.dmg`，打開後把 Argus 拖進「應用程式」。App 已經過 Apple 簽名與公證，雙擊就能直接打開。
+
+也可以用 [Homebrew](https://brew.sh) 安裝：
+
+```sh
+brew trust --tap liang515/tap   # 第一次才需要
+brew install --cask liang515/tap/argus
+```
 
 需求：
 
