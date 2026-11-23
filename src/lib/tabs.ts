@@ -15,7 +15,9 @@ export type ShortcutAction =
   | { type: "sidebar" }
   | { type: "duplicate" }
   | { type: "help" }
-  | { type: "move"; delta: -1 | 1 };
+  | { type: "move"; delta: -1 | 1 }
+  /** 終端機字體：1 放大、-1 縮小、0 恢復預設 */
+  | { type: "zoom"; delta: -1 | 0 | 1 };
 
 type KeyLike = Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "altKey" | "shiftKey" | "key" | "code">;
 
@@ -49,6 +51,8 @@ export function shortcutAction(e: KeyLike): ShortcutAction | null {
     if (e.key.toLowerCase() === "t") return { type: "duplicate" };
     if (e.code === "ArrowLeft") return { type: "move", delta: -1 };
     if (e.code === "ArrowRight") return { type: "move", delta: 1 };
+    // 美式鍵盤的 ⌘＋ 其實是 ⌘⇧＝
+    if (e.code === "Equal") return { type: "zoom", delta: 1 };
     return null;
   }
   const key = e.key.toLowerCase();
@@ -57,6 +61,9 @@ export function shortcutAction(e: KeyLike): ShortcutAction | null {
   if (key === "k" || key === "p") return { type: "palette" };
   if (key === "b") return { type: "sidebar" };
   if (e.code === "Slash" || key === "/") return { type: "help" };
+  if (e.code === "Equal" || key === "+") return { type: "zoom", delta: 1 };
+  if (e.code === "Minus") return { type: "zoom", delta: -1 };
+  if (e.code === "Digit0") return { type: "zoom", delta: 0 };
   if (/^[1-9]$/.test(key)) {
     // 跟瀏覽器一樣：Cmd+9 是最後一個分頁
     return { type: "select", index: key === "9" ? -1 : Number(key) - 1 };

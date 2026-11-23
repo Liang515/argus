@@ -177,3 +177,15 @@ describe("overflowAlert", () => {
     expect(overflowAlert([])).toBeNull();
   });
 });
+
+describe("字體縮放快捷鍵", () => {
+  it("⌘＝、⌘⇧＝（⌘＋）放大，⌘－ 縮小，⌘0 恢復", () => {
+    expect(shortcutAction(key("=", { code: "Equal" }))).toEqual({ type: "zoom", delta: 1 });
+    expect(shortcutAction(key("+", { code: "Equal", shiftKey: true }))).toEqual({
+      type: "zoom",
+      delta: 1,
+    });
+    expect(shortcutAction(key("-", { code: "Minus" }))).toEqual({ type: "zoom", delta: -1 });
+    expect(shortcutAction(key("0", { code: "Digit0" }))).toEqual({ type: "zoom", delta: 0 });
+  });
+});

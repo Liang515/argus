@@ -21,6 +21,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
       ["⌘B", t("help.panels.sidebar")],
       ["⌘/", t("help.panels.help")],
       [t("help.panels.themeKeys"), t("help.panels.theme")],
+      ["⌘+  ⌘−", t("help.panels.zoom")],
     ],
   },
   {

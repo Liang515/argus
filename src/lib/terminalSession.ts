@@ -9,6 +9,7 @@ import { type ActivityEvent, parseActivity } from "./activity";
 import type { AgentId } from "./agents";
 import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
+import { DEFAULT_FONT_SIZE } from "./fontSize";
 import { t } from "./i18n";
 import {
   backgroundSessionId,
@@ -38,6 +39,13 @@ let currentTheme: ITheme = BUILT_IN.argus.terminal;
 
 export function setDefaultTerminalTheme(theme: ITheme) {
   currentTheme = theme;
+}
+
+/** 新開的分頁用目前的字體大小（⌘＋／⌘－ 調整時更新）。 */
+let currentFontSize = DEFAULT_FONT_SIZE;
+
+export function setDefaultFontSize(size: number) {
+  currentFontSize = size;
 }
 
 function toBytes(data: unknown): Uint8Array | string {
@@ -81,7 +89,7 @@ export class TerminalSession {
     this.term = new Terminal({
       allowProposedApi: true,
       fontFamily: '"SF Mono", Menlo, Monaco, "PingFang TC", monospace',
-      fontSize: 13,
+      fontSize: currentFontSize,
       lineHeight: 1.15,
       scrollback: 10000,
       // 只有正在打字的分頁閃游標（見 setBlink），背景分頁不必一直重繪
@@ -168,6 +176,13 @@ export class TerminalSession {
 
   setTheme(theme: ITheme) {
     this.term.options.theme = theme;
+  }
+
+  /** 改字體大小後重新排版，終端機欄數變了也會通知 shell 和 agent。 */
+  setFontSize(size: number) {
+    if (this.term.options.fontSize === size) return;
+    this.term.options.fontSize = size;
+    this.fit();
   }
 
   setBlink(on: boolean) {

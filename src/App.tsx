@@ -20,6 +20,7 @@ import {
   isAgentId,
   preferredAgent,
 } from "./lib/agents";
+import { nextFontSize, parseFontSize } from "./lib/fontSize";
 import { pushRecent } from "./lib/fuzzy";
 import { t, translateError } from "./lib/i18n";
 import { isAppAvailable, OPEN_TARGET_LABEL, type OpenTarget, openIn } from "./lib/project";
@@ -32,7 +33,11 @@ import {
   type Tab,
   tabLabels,
 } from "./lib/tabs";
-import { setDefaultTerminalTheme, TerminalSession } from "./lib/terminalSession";
+import {
+  setDefaultFontSize,
+  setDefaultTerminalTheme,
+  TerminalSession,
+} from "./lib/terminalSession";
 import {
   applyUi,
   BUILT_IN,
@@ -59,6 +64,15 @@ const DETECT_RELAXED_MS = 60_000;
 const EDITOR_COUNT = 2;
 const SIDEBAR_KEY = "argus.sidebar";
 const THEME_KEY = "argus.theme";
+const FONT_SIZE_KEY = "argus.fontSize";
+
+function loadFontSize(): number {
+  try {
+    return parseFontSize(localStorage.getItem(FONT_SIZE_KEY));
+  } catch {
+    return parseFontSize(null);
+  }
+}
 
 function loadThemePref(): ThemeId {
   try {
@@ -129,6 +143,7 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(loadSidebarPref);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemePref);
+  const [fontSize, setFontSize] = useState(loadFontSize);
   // 背景是淺色時，側欄的 Markdown 與 Git 狀態要換成深色字
   const [lightUi, setLightUi] = useState(false);
   const sessions = useRef(new Map<string, TerminalSession>());
@@ -274,6 +289,17 @@ export default function App() {
     }, STALE_CHECK_MS);
     return () => clearInterval(timer);
   }, []);
+
+  // 字體大小：所有分頁一起變，新分頁也用這個大小，並記住
+  useEffect(() => {
+    setDefaultFontSize(fontSize);
+    for (const s of sessions.current.values()) s.setFontSize(fontSize);
+    try {
+      localStorage.setItem(FONT_SIZE_KEY, String(fontSize));
+    } catch {
+      // 無法寫入時只是下次不記得
+    }
+  }, [fontSize]);
 
   // 套用配色：外框的 CSS 變數、新分頁的預設、已開的分頁都換掉，並記住選擇
   useEffect(() => {
@@ -566,6 +592,9 @@ export default function App() {
       else if (action.type === "move") {
         const index = current.findIndex((t) => t.id === active);
         if (active && index !== -1) setTabs((prev) => moveTab(prev, active, index + action.delta));
+      } else if (action.type === "zoom") {
+        const delta = action.delta;
+        setFontSize((size) => nextFontSize(size, delta));
       } else if (action.type === "sidebar") setSidebarOpen((o) => !o);
       else if (action.type === "new") void addTab();
       else if (action.type === "close") {
@@ -610,6 +639,24 @@ export default function App() {
         run: () => setSidebarOpen((o) => !o),
       },
       { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => setHelpOpen(true) },
+      {
+        id: "zoom-in",
+        label: t("app.zoomIn"),
+        hint: "⌘+",
+        run: () => setFontSize((n) => nextFontSize(n, 1)),
+      },
+      {
+        id: "zoom-out",
+        label: t("app.zoomOut"),
+        hint: "⌘−",
+        run: () => setFontSize((n) => nextFontSize(n, -1)),
+      },
+      {
+        id: "zoom-reset",
+        label: t("app.zoomReset"),
+        hint: "⌘0",
+        run: () => setFontSize((n) => nextFontSize(n, 0)),
+      },
       ...THEME_IDS.map((id) => ({
         id: `theme-${id}`,
         label: t("theme.pick", { name: t(THEME_NAME_KEY[id]) }),
