@@ -110,15 +110,13 @@ export function hiddenTabIds(
 }
 
 /**
- * 看不到的分頁裡最需要注意的狀態，給「全部分頁」按鈕顯示提醒點：
- * 等你確認 > 已完成（等你看結果）> 執行中。待命或沒有 agent 不提醒。
+ * 看不到的分頁裡出現了哪些狀態，給「全部分頁」按鈕各亮一顆提醒點：
+ * 依等你確認、已完成（等你看結果）、執行中排序。待命或沒有 agent 不提醒。
  */
-export function overflowAlert<S extends string>(statuses: S[]): S | null {
-  for (const wanted of ["needs-input", "done", "running"]) {
-    const hit = statuses.find((s) => s === wanted);
-    if (hit) return hit;
-  }
-  return null;
+export function overflowAlerts<S extends string>(statuses: S[]): S[] {
+  return (["needs-input", "done", "running"] as string[]).filter((wanted): wanted is S =>
+    statuses.some((s) => s === wanted),
+  );
 }
 
 /** 依快捷鍵算出要切到哪個分頁。 */

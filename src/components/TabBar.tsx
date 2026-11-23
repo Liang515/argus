@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
-import { dropIndex, hiddenTabIds, overflowAlert, type Tab } from "../lib/tabs";
+import { dropIndex, hiddenTabIds, overflowAlerts, type Tab } from "../lib/tabs";
 import { AgentButtons } from "./AgentButtons";
 
 const DOT_CLASS: Record<Exclude<ClaudeStatus, "off">, string> = {
@@ -330,10 +330,10 @@ function TabsMenu({
     };
   }, [open]);
 
-  const alert = overflowAlert(hidden.map((id) => statuses[id] ?? "off"));
+  const alerts = overflowAlerts(hidden.map((id) => statuses[id] ?? "off"));
   // 提醒點的說明要寫對是哪個 agent（例如 agy 執行中）
-  const alertAgent =
-    runningAgents[hidden.find((id) => (statuses[id] ?? "off") === alert) ?? ""] ?? "claude";
+  const agentFor = (status: ClaudeStatus) =>
+    runningAgents[hidden.find((id) => (statuses[id] ?? "off") === status) ?? ""] ?? "claude";
   const title = t("tab.hiddenCount", { count: hidden.length });
 
   return (
@@ -346,7 +346,9 @@ function TabsMenu({
         onClick={() => setOpen((o) => !o)}
         className="flex h-7 items-center gap-1 rounded-md px-1.5 text-[12px] text-deck-muted hover:bg-deck-hover hover:text-deck-text"
       >
-        {alert && alert !== "off" && <StatusDot status={alert} agent={alertAgent} active={false} />}
+        {alerts.map((status) => (
+          <StatusDot key={status} status={status} agent={agentFor(status)} active={false} />
+        ))}
         <span>{hidden.length}</span>
         <ChevronDown size={13} />
       </button>

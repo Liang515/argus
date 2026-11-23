@@ -4,7 +4,7 @@ import {
   dropIndex,
   hiddenTabIds,
   moveTab,
-  overflowAlert,
+  overflowAlerts,
   resolveSelect,
   shortcutAction,
   type Tab,
@@ -166,15 +166,19 @@ describe("hiddenTabIds", () => {
   });
 });
 
-describe("overflowAlert", () => {
-  it("等你確認最優先，其次是已完成、執行中", () => {
-    expect(overflowAlert(["running", "done", "needs-input"])).toBe("needs-input");
-    expect(overflowAlert(["running", "done", "idle"])).toBe("done");
-    expect(overflowAlert(["idle", "running", "off"])).toBe("running");
+describe("overflowAlerts", () => {
+  it("列出所有出現的狀態，依等你確認、已完成、執行中排序", () => {
+    expect(overflowAlerts(["running", "done", "needs-input"])).toEqual([
+      "needs-input",
+      "done",
+      "running",
+    ]);
+    expect(overflowAlerts(["done", "done", "running", "done"])).toEqual(["done", "running"]);
+    expect(overflowAlerts(["idle", "running", "off"])).toEqual(["running"]);
   });
   it("只有待命或沒有 agent 時不提醒", () => {
-    expect(overflowAlert(["idle", "off"])).toBeNull();
-    expect(overflowAlert([])).toBeNull();
+    expect(overflowAlerts(["idle", "off"])).toEqual([]);
+    expect(overflowAlerts([])).toEqual([]);
   });
 });
 
