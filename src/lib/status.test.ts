@@ -28,7 +28,7 @@ describe("parseArgusOsc", () => {
 describe("statusLabel", () => {
   it("顯示 agent 名稱與狀態", () => {
     // 介面語言跟著系統，所以用目前語言的文字比對
-    expect(statusLabel("running", "agy")).toBe(`agy ${t("status.running")}`);
+    expect(statusLabel("running", "agy")).toBe(`Antigravity ${t("status.running")}`);
     expect(statusLabel("needs-input", "claude")).toBe(`Claude ${t("status.needsInput")}`);
     expect(statusLabel("off", "claude")).toBe("");
   });

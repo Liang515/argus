@@ -26,7 +26,7 @@ export const AGENTS: Record<
     installCommand: "curl -fsSL https://claude.ai/install.sh | bash",
   },
   agy: {
-    label: "agy",
+    label: "Antigravity",
     start: "agy",
     resume: "agy -c",
     install: "https://antigravity.google/docs/cli/install",

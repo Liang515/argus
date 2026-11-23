@@ -58,7 +58,7 @@ const STATUS_TEXT: Record<Exclude<ClaudeStatus, "off">, MessageKey> = {
   done: "status.done",
 };
 
-/** 例如「agy 執行中」「Claude 等待你確認」。 */
+/** 例如「Antigravity 執行中」「Claude 等待你確認」。 */
 export function statusLabel(status: ClaudeStatus, agent: AgentId): string {
   return status === "off" ? "" : `${AGENTS[agent].label} ${t(STATUS_TEXT[status])}`;
 }
