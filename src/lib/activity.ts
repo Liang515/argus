@@ -5,7 +5,7 @@ export type Verb = "read" | "edit" | "write" | "run" | "search" | "web" | "agent
 /** 後端 activity.rs 的 Event（`k` 是種類）。 */
 export type ActivityEvent =
   | { k: "prompt"; text: string }
-  | { k: "start"; id?: string; verb: Verb; target: string; add?: number }
+  | { k: "start"; id?: string; verb: Verb; target: string; add?: number; detail?: string }
   | { k: "end"; id?: string; ok: boolean }
   | { k: "todos"; items: { text: string; status: string }[] }
   | { k: "stop" };
@@ -17,6 +17,8 @@ export interface ActivityItem {
   kind: "prompt" | Verb;
   target: string;
   add?: number;
+  /** 滑鼠移上去顯示的完整內容（例如整行指令） */
+  detail?: string;
   /** prompt 沒有狀態；工具是 running → ok / fail，回覆結束時還沒收到結果的算 unknown */
   status?: "running" | "ok" | "fail" | "unknown";
   /** 執行花了多久（毫秒），只有收到結束事件才有 */
@@ -101,6 +103,7 @@ export function applyActivity(
         kind: event.verb,
         target: event.target,
         add: event.add,
+        detail: event.detail,
         status: "running",
       });
     case "end": {
@@ -130,8 +133,9 @@ export function todoProgress(todos: Todo[]): { done: number; total: number } {
   return { done: todos.filter((t) => t.status === "completed").length, total: todos.length };
 }
 
-/** 例如 4s、1m 20s。 */
+/** 例如 <1s、4s、1m 20s。 */
 export function formatTook(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
+  if (ms < 1000) return "<1s";
+  const s = Math.round(ms / 1000);
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }

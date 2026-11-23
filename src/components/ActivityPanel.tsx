@@ -116,7 +116,7 @@ export function ActivityPanel({ activity }: { activity: ActivityState }) {
             {activity.items.map((item) => (
               <li
                 key={item.key}
-                title={item.target}
+                title={item.detail ?? item.target}
                 className="grid grid-cols-[2.6rem_2.4rem_1fr_auto] items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-deck-hover"
               >
                 <span className="text-[11px] text-deck-muted tabular-nums">{clock(item.at)}</span>

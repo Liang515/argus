@@ -12,6 +12,8 @@ use serde_json::Value;
 
 /// 顯示用文字的長度上限（字元數）。
 const MAX_TEXT: usize = 120;
+/// 滑鼠移上去看的完整內容（例如整行指令）的長度上限。
+const MAX_DETAIL: usize = 400;
 /// 計畫清單最多帶幾項。
 const MAX_TODOS: usize = 30;
 
@@ -29,6 +31,9 @@ pub enum Event {
         /// 修改或寫入時增加的行數
         #[serde(skip_serializing_if = "Option::is_none")]
         add: Option<i64>,
+        /// 滑鼠移上去看的完整內容（執行指令時是整行指令）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
     },
     /// 工具執行完
     End {
@@ -49,18 +54,24 @@ pub struct Todo {
     pub status: String,
 }
 
-fn clip(s: &str) -> String {
-    let one_line = s
-        .lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or("")
-        .trim();
-    if one_line.chars().count() <= MAX_TEXT {
-        one_line.to_string()
+fn clip_to(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
     } else {
-        let cut: String = one_line.chars().take(MAX_TEXT - 1).collect();
+        let cut: String = s.chars().take(max - 1).collect();
         format!("{cut}…")
     }
+}
+
+/// 第一個非空白行，截到 MAX_TEXT。
+fn clip(s: &str) -> String {
+    clip_to(
+        s.lines()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("")
+            .trim(),
+        MAX_TEXT,
+    )
 }
 
 /// 專案裡的檔案顯示相對路徑，外面的顯示完整路徑。
@@ -83,7 +94,19 @@ fn line_count(s: &str) -> i64 {
     }
 }
 
-/// 工具名稱 → 動作、對象、增加行數。TodoWrite 另外處理。
+/// 執行指令：優先顯示 Claude 附的簡短說明（比原始指令好懂），完整指令放在 detail。
+fn describe_command(input: &Value) -> (String, Option<String>) {
+    let command = str_of(input, "command").trim();
+    let description = str_of(input, "description").trim();
+    let detail = Some(clip_to(command, MAX_DETAIL));
+    if description.is_empty() {
+        (clip(command), detail)
+    } else {
+        (clip(description), detail)
+    }
+}
+
+/// 工具名稱 → 動作、對象、增加行數。TodoWrite、Bash 另外處理。
 fn describe(tool: &str, input: &Value, cwd: Option<&str>) -> (&'static str, String, Option<i64>) {
     let path = || display_path(str_of(input, "file_path"), cwd);
     match tool {
@@ -154,6 +177,16 @@ pub fn summarize(payload: &str) -> Option<Event> {
                 .collect();
             Some(Event::Todos { items })
         }
+        "PreToolUse" if tool == "Bash" => {
+            let (target, detail) = describe_command(&input);
+            Some(Event::Start {
+                id,
+                verb: "run",
+                target,
+                add: None,
+                detail,
+            })
+        }
         "PreToolUse" => {
             let (verb, target, add) = describe(tool, &input, cwd);
             Some(Event::Start {
@@ -161,6 +194,7 @@ pub fn summarize(payload: &str) -> Option<Event> {
                 verb,
                 target,
                 add,
+                detail: None,
             })
         }
         "PostToolUse" if tool == "TodoWrite" => None,
@@ -224,7 +258,8 @@ mod tests {
                 id: Some("t1".into()),
                 verb: "read",
                 target: "src/a.ts".into(),
-                add: None
+                add: None,
+                detail: None
             })
         );
         // 寫入整個檔案：只帶行數，不帶內容
@@ -243,12 +278,26 @@ mod tests {
             panic!()
         };
         assert_eq!(add, Some(2));
-        let Some(Event::Start { verb, target, .. }) =
-            start("Bash", json!({"command": "npm test\n&& echo done"}))
+        let Some(Event::Start {
+            verb,
+            target,
+            detail,
+            ..
+        }) = start("Bash", json!({"command": "npm test\n&& echo done"}))
         else {
             panic!()
         };
         assert_eq!((verb, target.as_str()), ("run", "npm test"));
+        assert_eq!(detail.as_deref(), Some("npm test\n&& echo done"));
+        // 有說明就顯示說明，完整指令放 detail
+        let Some(Event::Start { target, detail, .. }) = start(
+            "Bash",
+            json!({"command": "cargo test --quiet 2>&1 | tail", "description": "跑 Rust 測試"}),
+        ) else {
+            panic!()
+        };
+        assert_eq!(target, "跑 Rust 測試");
+        assert_eq!(detail.as_deref(), Some("cargo test --quiet 2>&1 | tail"));
     }
 
     #[test]

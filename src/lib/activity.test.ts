@@ -88,6 +88,7 @@ describe("applyActivity", () => {
 
 describe("formatTook", () => {
   it("秒數與分鐘", () => {
+    expect(formatTook(300)).toBe("<1s");
     expect(formatTook(4200)).toBe("4s");
     expect(formatTook(80_000)).toBe("1m 20s");
   });
