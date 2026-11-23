@@ -14,8 +14,11 @@ use serde_json::Value;
 const MAX_TEXT: usize = 120;
 /// 滑鼠移上去看的完整內容（例如整行指令）的長度上限。
 const MAX_DETAIL: usize = 400;
-/// 計畫清單最多帶幾項。
-const MAX_TODOS: usize = 30;
+/// 計畫清單最多帶幾項、每項幾個字：整個摘要要小，和畫面輸出一起寫進終端機時才不容易被切斷。
+const MAX_TODOS: usize = 20;
+const MAX_TODO_TEXT: usize = 80;
+/// hook 原始資料最多讀多少（寫入大檔時 tool_input 會很大）。
+const MAX_PAYLOAD: u64 = 2 * 1024 * 1024;
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(tag = "k", rename_all = "lowercase")]
@@ -98,7 +101,7 @@ fn line_count(s: &str) -> i64 {
 fn describe_command(input: &Value) -> (String, Option<String>) {
     let command = str_of(input, "command").trim();
     let description = str_of(input, "description").trim();
-    let detail = Some(clip_to(command, MAX_DETAIL));
+    let detail = (!command.is_empty()).then(|| clip_to(command, MAX_DETAIL));
     if description.is_empty() {
         (clip(command), detail)
     } else {
@@ -133,7 +136,6 @@ fn describe(tool: &str, input: &Value, cwd: Option<&str>) -> (&'static str, Stri
             display_path(str_of(input, "notebook_path"), cwd),
             None,
         ),
-        "Bash" => ("run", clip(str_of(input, "command")), None),
         "Grep" | "Glob" => ("search", clip(str_of(input, "pattern")), None),
         "WebFetch" => ("web", clip(str_of(input, "url")), None),
         "WebSearch" => ("web", clip(str_of(input, "query")), None),
@@ -171,7 +173,7 @@ pub fn summarize(payload: &str) -> Option<Event> {
                 .iter()
                 .take(MAX_TODOS)
                 .map(|t| Todo {
-                    text: clip(str_of(t, "content")),
+                    text: clip_to(clip(str_of(t, "content")).as_str(), MAX_TODO_TEXT),
                     status: str_of(t, "status").to_string(),
                 })
                 .collect();
@@ -212,7 +214,11 @@ pub fn summarize(payload: &str) -> Option<Event> {
 /// `argus --hook-summary`：讀 stdin、印出一行 JSON 摘要（沒有可顯示的就不印）。
 pub fn hook_summary_main() {
     let mut payload = String::new();
-    if std::io::stdin().read_to_string(&mut payload).is_err() {
+    if std::io::stdin()
+        .take(MAX_PAYLOAD)
+        .read_to_string(&mut payload)
+        .is_err()
+    {
         return;
     }
     if let Some(event) = summarize(&payload)
@@ -351,6 +357,27 @@ mod tests {
             ),
             Some(Event::End { id: None, ok: true })
         );
+    }
+
+    #[test]
+    fn todos_are_capped_to_keep_the_summary_small() {
+        let todos: Vec<Value> = (0..30)
+            .map(|i| json!({"content": format!("{i} {}", "很長的待辦".repeat(40)), "status": "pending"}))
+            .collect();
+        let Some(Event::Todos { items }) = run(json!({
+            "hook_event_name": "PreToolUse", "tool_name": "TodoWrite",
+            "tool_input": {"todos": todos}
+        })) else {
+            panic!()
+        };
+        assert_eq!(items.len(), MAX_TODOS);
+        assert!(
+            items
+                .iter()
+                .all(|t| t.text.chars().count() <= MAX_TODO_TEXT)
+        );
+        let line = serde_json::to_string(&Event::Todos { items }).unwrap();
+        assert!(line.len() < 6 * 1024, "{} bytes", line.len());
     }
 
     /// 真實的失敗事件（Claude Code 2.1.286 錄下來的欄位）

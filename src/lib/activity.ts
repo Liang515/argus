@@ -56,7 +56,15 @@ export function parseActivity(json: string): ActivityEvent | null {
       case "end":
         return typeof e.ok === "boolean" ? e : null;
       case "todos":
-        return Array.isArray(e.items) ? e : null;
+        // 終端機輸出可能被偽造（例如 cat 一個測試檔），只留格式正確的項目
+        if (!Array.isArray(e.items)) return null;
+        return {
+          k: "todos",
+          items: e.items.filter(
+            (t): t is { text: string; status: string } =>
+              typeof t === "object" && t !== null && typeof t.text === "string",
+          ),
+        };
       case "stop":
         return e;
       default:

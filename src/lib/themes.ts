@@ -85,6 +85,17 @@ function parseHex(color: string): [number, number, number] | null {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+/** 背景是不是淺色（相對亮度 > 0.5）：「跟隨終端機」可能是白底的 Basic 或 Solarized Light。 */
+export function isLight(color: string): boolean {
+  const c = parseHex(color);
+  if (!c) return false;
+  const [r, g, b] = c.map((v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5 ** 2.2;
+}
+
 /** 兩色混合，amount 是 b 的比例（0～1）。 */
 export function mix(a: string, b: string, amount: number): string {
   const ca = parseHex(a);

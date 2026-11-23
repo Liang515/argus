@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUILT_IN, isThemeId, mix, themeFromTerminal, uiFromTerminal } from "./themes";
+import { BUILT_IN, isLight, isThemeId, mix, themeFromTerminal, uiFromTerminal } from "./themes";
 
 describe("mix", () => {
   it("依比例混合兩色", () => {
@@ -35,6 +35,16 @@ describe("themeFromTerminal", () => {
   it("Clear Dark 和「終端機」設定檔的色碼一致", () => {
     expect(BUILT_IN["clear-dark"].terminal.background).toBe("#191d27");
     expect(BUILT_IN["clear-dark"].ui.bg).toBe("#191d27");
+  });
+});
+
+describe("isLight", () => {
+  it("白底、淺黃底算淺色，深色主題不算", () => {
+    expect(isLight("#ffffff")).toBe(true);
+    expect(isLight("#fdf6e3")).toBe(true); // Solarized Light
+    expect(isLight("#191d27")).toBe(false);
+    expect(isLight("#0d0f12")).toBe(false);
+    expect(isLight("#808080")).toBe(false);
   });
 });
 

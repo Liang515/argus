@@ -41,6 +41,15 @@ const TONE_CLASS = {
   conflict: "text-[#f07178] font-bold",
 } as const;
 
+/** 淺色背景用的較深色，亮黃、亮綠在白底上看不清楚。 */
+const TONE_CLASS_LIGHT: Record<keyof typeof TONE_CLASS, string> = {
+  added: "text-[#2e7d32]",
+  modified: "text-[#9a6700]",
+  deleted: "text-[#c62828]",
+  renamed: "text-[#1565c0]",
+  conflict: "text-[#c62828] font-bold",
+};
+
 const TOOLS: { target: OpenTarget; label: string; icon: typeof Code2 }[] = [
   { target: "vscode", label: "VS Code", icon: Code2 },
   { target: "antigravity", label: "Antigravity", icon: Rocket },
@@ -59,11 +68,14 @@ interface Props {
   tab: Tab;
   status: ClaudeStatus;
   activity: ActivityState;
+  /** 背景是淺色（「跟隨終端機」用了白底配色） */
+  light: boolean;
   /** 有安裝的編輯器（null：還沒偵測完） */
   apps: OpenTarget[] | null;
 }
 
-export function Sidebar({ tab, status, apps, activity }: Props) {
+export function Sidebar({ tab, status, apps, activity, light }: Props) {
+  const tones = light ? TONE_CLASS_LIGHT : TONE_CLASS;
   const [view, setView] = useState<View>("activity");
   const { id, path } = tab;
   // undefined：載入中；null：不是 git repo
@@ -207,7 +219,7 @@ export function Sidebar({ tab, status, apps, activity }: Props) {
                   title={c.path}
                   className="flex items-center gap-2 rounded px-1.5 py-0.5 hover:bg-deck-hover"
                 >
-                  <span className={`w-3 shrink-0 text-center font-mono ${TONE_CLASS[badge.tone]}`}>
+                  <span className={`w-3 shrink-0 text-center font-mono ${tones[badge.tone]}`}>
                     {badge.label}
                   </span>
                   <span className="truncate">
@@ -249,7 +261,9 @@ export function Sidebar({ tab, status, apps, activity }: Props) {
               </div>
             )}
             {doc ? (
-              <article className="prose prose-sm prose-invert max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:my-1.5 prose-pre:bg-deck-bg prose-code:before:content-none prose-code:after:content-none">
+              <article
+                className={`prose prose-sm ${light ? "" : "prose-invert"} max-w-none prose-headings:mb-2 prose-headings:mt-4 prose-p:my-1.5 prose-pre:bg-deck-bg prose-code:before:content-none prose-code:after:content-none`}
+              >
                 <Markdown
                   remarkPlugins={[remarkGfm]}
                   components={{

@@ -26,6 +26,9 @@ describe("parseActivity", () => {
     expect(parseActivity("not json")).toBeNull();
     expect(parseActivity('{"k":"start","verb":"hack","target":"x"}')).toBeNull();
     expect(parseActivity('{"k":"end"}')).toBeNull();
+    expect(
+      parseActivity('{"k":"todos","items":[null,1,{"text":"ok","status":"pending"}]}'),
+    ).toEqual({ k: "todos", items: [{ text: "ok", status: "pending" }] });
   });
 });
 

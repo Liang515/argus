@@ -65,27 +65,38 @@ function Result({ item }: { item: ActivityItem }) {
   return <span className="text-deck-muted">{extra}</span>;
 }
 
+/** 距離底部多近算「在底部」（像素）。 */
+const NEAR_BOTTOM_PX = 40;
+
 /** 側欄「活動」：Claude 的計畫進度與最近每一步動作。 */
 export function ActivityPanel({ activity }: { activity: ActivityState }) {
-  const listRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLElement>(null);
+  // 使用者往上翻舊紀錄時不要被拉回最底；本來就在底部才跟著最新動作捲動
+  const stickToBottom = useRef(true);
   const { done, total } = todoProgress(activity.todos);
   const last = activity.items[activity.items.length - 1]?.key;
 
-  // 新動作進來時捲到最下面（最新的在最下面）
   // biome-ignore lint/correctness/useExhaustiveDependencies: 只在最後一筆變了時捲動
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [last, activity.todos.length]);
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+  }, [last]);
+
+  const onScroll = () => {
+    const el = listRef.current;
+    if (el)
+      stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  };
 
   if (activity.items.length === 0 && total === 0) {
     return <p className="px-3 py-3 text-deck-muted">{t("act.empty")}</p>;
   }
 
   return (
-    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto pb-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* 計畫固定在上方，最近動作再多也不會把它捲走 */}
       {total > 0 && (
-        <section className="px-3 pt-2">
+        <section className="max-h-[38%] shrink-0 overflow-y-auto border-b border-deck-border px-3 pt-2 pb-2">
           <header className="flex justify-between text-[11px] font-semibold tracking-wide text-deck-muted">
             <span>{t("act.plan")}</span>
             <span className="tabular-nums">
@@ -108,7 +119,11 @@ export function ActivityPanel({ activity }: { activity: ActivityState }) {
         </section>
       )}
       {activity.items.length > 0 && (
-        <section className="pt-2">
+        <section
+          ref={listRef}
+          onScroll={onScroll}
+          className="min-h-0 flex-1 overflow-y-auto pt-2 pb-3"
+        >
           <header className="px-3 pb-1 text-[11px] font-semibold tracking-wide text-deck-muted">
             {t("act.recent")}
           </header>
@@ -117,7 +132,7 @@ export function ActivityPanel({ activity }: { activity: ActivityState }) {
               <li
                 key={item.key}
                 title={item.detail ?? item.target}
-                className="grid grid-cols-[2.6rem_2.4rem_1fr_auto] items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-deck-hover"
+                className="grid grid-cols-[2.6rem_2.9rem_1fr_auto] items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-deck-hover"
               >
                 <span className="text-[11px] text-deck-muted tabular-nums">{clock(item.at)}</span>
                 <span

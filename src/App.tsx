@@ -36,6 +36,7 @@ import { setDefaultTerminalTheme, TerminalSession } from "./lib/terminalSession"
 import {
   applyUi,
   BUILT_IN,
+  isLight,
   isThemeId,
   THEME_IDS,
   type Theme,
@@ -128,6 +129,8 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(loadSidebarPref);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemePref);
+  // 背景是淺色時，側欄的 Markdown 與 Git 狀態要換成深色字
+  const [lightUi, setLightUi] = useState(false);
   const sessions = useRef(new Map<string, TerminalSession>());
   const stageRef = useRef<HTMLDivElement>(null);
   const latest = useRef({ tabs, activeId, statuses, runningAgents, installed });
@@ -278,6 +281,7 @@ export default function App() {
     void resolveTheme(themeId).then((theme) => {
       if (cancelled) return;
       applyUi(theme.ui);
+      setLightUi(isLight(theme.ui.bg));
       setDefaultTerminalTheme(theme.terminal);
       for (const s of sessions.current.values()) s.setTheme(theme.terminal);
     });
@@ -757,6 +761,7 @@ export default function App() {
             status={statuses[activeTab.id] ?? "off"}
             apps={apps}
             activity={activities[activeTab.id] ?? EMPTY_ACTIVITY}
+            light={lightUi}
           />
         )}
       </div>

@@ -50,7 +50,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          args: --target universal-apple-darwin
+          # 自動更新檔只在發版時產生（要私鑰簽名），本機和外部 build 不需要
+          args: --target universal-apple-darwin --config src-tauri/tauri.release.conf.json
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: Argus ${{ github.ref_name }}
           releaseBody: |

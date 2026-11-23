@@ -233,7 +233,10 @@ function AgentMenu({
             <div className="w-80 p-1.5 text-[12px]">
               <button
                 type="button"
-                onClick={() => setInstalling(null)}
+                onClick={() => {
+                  setInstalling(null);
+                  setCopied(false);
+                }}
                 className="mb-2 flex items-center gap-1 text-deck-muted hover:text-deck-text"
               >
                 <ArrowLeft size={12} />

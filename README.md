@@ -10,13 +10,16 @@ A terminal workspace for coding agents on macOS. Keep every project in its own t
 
 - **Status lights on every tab**: running (pulsing yellow), waiting for your confirmation (red), done (green). You don't need to switch tabs to know who needs you.
 - **One launcher for several agents**: start or resume Claude Code, `agy` or Codex from the tab bar. If the tab is busy, the chosen agent opens in a new tab for the same folder instead of interrupting the current one.
-- **Project sidebar**: live Git changes, and the project's `HANDOFF.md` (or `CLAUDE.md`) rendered as it is updated.
+- **Project sidebar** with three views: **Activity** (Claude's to-do plan with a progress bar, and each step as it happens: files read and edited, commands run with ✓/✗ and duration), **Changes** (live Git status) and **Handoff** (the project's `HANDOFF.md` or `CLAUDE.md`, rendered as it is updated).
 - **Handoff protocol**: one click adds rules to the project's `CLAUDE.md` so the agent keeps `HANDOFF.md` up to date. When you switch agents or people, the next one can pick up where the last one stopped.
-- **Several tabs per project**: same folder, or a new Git worktree so two agents don't overwrite each other (⌘⇧T).
+- **Several tabs per project**: same folder, or a new Git worktree so two agents don't overwrite each other (⌘⇧T). Tab names stay readable; when they don't fit, an "all tabs" menu lists them and lights up if a hidden tab needs you.
 - **Open the project in VS Code, Antigravity or Finder**. Editors that aren't installed are shown with a link to their download page.
 - **⌘-click file paths in the terminal**: code and text files open in VS Code or Antigravity at the right line (`src/App.tsx:313`), other files in their default app. ⌘⌥-click reveals the file in Finder. Apps, scripts and installers are never run from a click.
 - **macOS editing keys in the terminal**: ⌘← / ⌘→ for line start/end, ⌥← / ⌥→ by word, ⌘⌫ to delete to line start, ⇧↩ for a newline in Claude Code.
 - **Keyboard first**: ⌘K project and action switcher, ⌘1–9 to jump to a tab, ⌘/ for all shortcuts.
+- **Color themes**: Argus, Clear Dark, or match your macOS Terminal profile (⌘K, search "theme").
+- **Updates itself**: a small "Update" button appears when a new release is out; one click downloads, installs and restarts.
+- **Easy agent setup**: agents that aren't installed show their official install command, ready to run in a new tab.
 
 ## Agent support
 
@@ -26,6 +29,7 @@ A terminal workspace for coding agents on macOS. Keep every project in its own t
 | Running and done lights         | ✓           | ✓   | –                              |
 | Waiting-for-you light           | ✓           | –   | best effort (from screen text) |
 | New chat / switch chat buttons  | ✓           | –   | –                              |
+| Activity panel                  | ✓           | –   | –                              |
 
 The interface follows your macOS language: Traditional Chinese or English.
 
@@ -58,7 +62,7 @@ npm run tauri dev     # run in development
 npm run tauri build   # build Argus.app and a .dmg
 ```
 
-Builds are ad-hoc signed by default. To sign with your own certificate, set `APPLE_SIGNING_IDENTITY` before building.
+Builds are ad-hoc signed by default. To sign with your own certificate, set `APPLE_SIGNING_IDENTITY` before building. Update packages (`.app.tar.gz` and its signature) are only produced by the release workflow, so you don't need a signing key to build.
 
 Checks: `npm run lint`, `npm run typecheck`, `npm test`, and in `src-tauri/`: `cargo fmt --check`, `cargo clippy --all-targets`, `cargo test`.
 

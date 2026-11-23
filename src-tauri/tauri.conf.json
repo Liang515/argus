@@ -50,8 +50,7 @@
       "signingIdentity": "-"
     },
     "copyright": "© 2026 Liang515",
-    "shortDescription": "Terminal workspace for coding agents",
-    "createUpdaterArtifacts": true
+    "shortDescription": "Terminal workspace for coding agents"
   },
   "plugins": {
     "updater": {
