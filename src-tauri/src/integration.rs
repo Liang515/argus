@@ -43,6 +43,14 @@ fn with_target_lookup(script: &str) -> String {
     script.replace("__ARGUS_TARGET__", TARGET_LOOKUP)
 }
 
+/// Claude 的 hook：再代入 Argus 執行檔路徑（整理活動摘要用；沒有就不送摘要）。
+fn claude_hook_script(argus_bin: Option<&Path>) -> String {
+    let bin = argus_bin
+        .map(|p| shell_quote(&p.to_string_lossy()))
+        .unwrap_or_else(|| "''".into());
+    with_target_lookup(HOOK_SCRIPT).replace("__ARGUS_BIN__", &bin)
+}
+
 const HOOK_SCRIPT: &str = r#"#!/bin/sh
 # Argus hook：把 Claude Code 狀態寫回所屬分頁（由 Argus 自動產生，請勿手動修改）
 state="$1"
@@ -55,8 +63,15 @@ if [ "$state" = "notify" ]; then
   esac
 fi
 __ARGUS_TARGET__
+osc=$(printf '\033]7777;argus;%s\007' "$state")
+# 側欄「活動」面板：請 Argus 執行檔把原始資料整理成一行摘要，和燈號一起送
+argus_bin=__ARGUS_BIN__
+if [ -x "$argus_bin" ]; then
+  summary=$(printf '%s' "$payload" | "$argus_bin" --hook-summary 2>/dev/null)
+  [ -n "$summary" ] && osc="$osc$(printf '\033]7777;argus-activity;%s\007' "$summary")"
+fi
 # 寫入最多等 1 秒：終端機卡住時放棄這次燈號，不拖住 Claude（hook 跑完 Claude 才會繼續）
-printf '\033]7777;argus;%s\007' "$state" > "$target" 2>/dev/null &
+printf '%s' "$osc" > "$target" 2>/dev/null &
 writer=$!
 # 計時器 1 秒後還沒寫完就中止；輸出導向 /dev/null，Claude 才不會等它的 stdout
 ( sleep 1; kill "$writer" 2>/dev/null ) > /dev/null 2>&1 &
@@ -195,6 +210,7 @@ pub fn hooks_settings(hook_script: &Path) -> serde_json::Value {
             "UserPromptSubmit": hook("running"),
             "PreToolUse": hook("running"),
             "PostToolUse": hook("running"),
+            "PostToolUseFailure": hook("running"),
             "Notification": hook("notify"),
             "Stop": hook("done"),
             "SessionEnd": hook("off"),
@@ -203,12 +219,18 @@ pub fn hooks_settings(hook_script: &Path) -> serde_json::Value {
 }
 
 /// 把整合檔案寫到 `dir`（每次啟動覆寫，確保跟目前版本一致）。
+#[cfg(test)]
 pub fn install_to(dir: &Path) -> io::Result<Integration> {
+    install_with_bin(dir, None)
+}
+
+/// `argus_bin` 是 Argus 自己的執行檔，hook 用它整理活動摘要（`--hook-summary`）。
+pub fn install_with_bin(dir: &Path, argus_bin: Option<&Path>) -> io::Result<Integration> {
     let zsh_dir = dir.join("zsh");
     fs::create_dir_all(&zsh_dir)?;
 
     let hook_script = dir.join("hook.sh");
-    fs::write(&hook_script, with_target_lookup(HOOK_SCRIPT))?;
+    fs::write(&hook_script, claude_hook_script(argus_bin))?;
 
     let hooks_file = dir.join("hooks.json");
     fs::write(
@@ -231,7 +253,10 @@ pub fn install() -> io::Result<Integration> {
     if let Err(e) = install_agy_plugin(&home.join(".gemini").join("config")) {
         eprintln!("agy 狀態外掛安裝失敗：{e}");
     }
-    install_to(&home.join(".argus"))
+    install_with_bin(
+        &home.join(".argus"),
+        std::env::current_exe().ok().as_deref(),
+    )
 }
 
 #[cfg(test)]
@@ -248,6 +273,7 @@ mod tests {
             "UserPromptSubmit",
             "PreToolUse",
             "PostToolUse",
+            "PostToolUseFailure",
             "Notification",
             "Stop",
             "SessionEnd",
@@ -408,6 +434,29 @@ mod tests {
             "{out:?}"
         );
         assert_eq!(fs::read_to_string(&stale).unwrap(), "", "不該寫到舊的分頁");
+    }
+
+    /// 給了 Argus 執行檔時，hook 會把它的摘要接在燈號後面送出。
+    #[test]
+    fn hook_appends_the_activity_summary() {
+        let dir = tempfile::tempdir().unwrap();
+        // 假的 Argus 執行檔：收到 --hook-summary 就印一行固定的摘要
+        let fake_bin = dir.path().join("argus");
+        fs::write(
+            &fake_bin,
+            "#!/bin/sh\ncat > /dev/null\necho '{\"k\":\"stop\"}'\n",
+        )
+        .unwrap();
+        fs::set_permissions(
+            &fake_bin,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        install_with_bin(dir.path(), Some(&fake_bin)).unwrap();
+        assert_eq!(
+            run_hook(dir.path(), "done", "{}"),
+            "\x1b]7777;argus;done\x07\x1b]7777;argus-activity;{\"k\":\"stop\"}\x07"
+        );
     }
 
     #[test]

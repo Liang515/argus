@@ -5,6 +5,7 @@ import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { type ILink, type ITheme, Terminal } from "@xterm/xterm";
+import { type ActivityEvent, parseActivity } from "./activity";
 import type { AgentId } from "./agents";
 import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
@@ -29,6 +30,8 @@ const ATTACH_RETRY_MS = 200;
 
 /** 備援偵測保留的尾端文字長度，避免提示字被切在兩批輸出之間。 */
 const FALLBACK_TAIL = 300;
+
+const ACTIVITY_TAG = "argus-activity;";
 
 /** 新開的分頁用目前選的配色（App 啟動與切換配色時更新）。 */
 let currentTheme: ITheme = BUILT_IN.argus.terminal;
@@ -72,6 +75,7 @@ export class TerminalSession {
     readonly id: string,
     readonly cwd: string,
     private readonly onStatus: (id: string, status: ClaudeStatus, agent: AgentId) => void,
+    private readonly onActivity: (id: string, event: ActivityEvent) => void = () => {},
   ) {
     this.element.style.height = "100%";
     this.term = new Terminal({
@@ -99,6 +103,12 @@ export class TerminalSession {
       provideLinks: (y, callback) => void this.pathLinks(y).then(callback),
     });
     this.term.parser.registerOscHandler(DECK_OSC, (data) => {
+      // 側欄「活動」的摘要（hook 和燈號一起送）
+      if (data.startsWith(ACTIVITY_TAG)) {
+        const event = parseActivity(data.slice(ACTIVITY_TAG.length));
+        if (event) this.onActivity(this.id, event);
+        return true;
+      }
       const parsed = parseArgusOsc(data);
       if (parsed) {
         this.hooksSeen = true;

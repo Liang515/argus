@@ -1,3 +1,4 @@
+mod activity;
 mod git;
 mod integration;
 mod paths;
@@ -128,6 +129,11 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         ],
     )?;
     Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])
+}
+
+/// `argus --hook-summary`：給 hook 呼叫的小工具，不啟動視窗。
+pub fn hook_summary_main() {
+    activity::hook_summary_main();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

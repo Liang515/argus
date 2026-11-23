@@ -9,6 +9,7 @@ import { CommandPalette, type PaletteAction } from "./components/CommandPalette"
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { Sidebar } from "./components/Sidebar";
 import { TabBar } from "./components/TabBar";
+import { type ActivityState, applyActivity, EMPTY_ACTIVITY } from "./lib/activity";
 import {
   AGENT_IDS,
   AGENTS,
@@ -113,6 +114,7 @@ export default function App() {
   const [branches, setBranches] = useState<Record<string, string | null>>({});
   const [statuses, setStatuses] = useState<Record<string, ClaudeStatus>>({});
   const [runningAgents, setRunningAgents] = useState<Record<string, AgentId>>({});
+  const [activities, setActivities] = useState<Record<string, ActivityState>>({});
   const [installed, setInstalled] = useState<AgentId[]>(["claude"]);
   // 有安裝的編輯器；null 表示還沒偵測完
   const [apps, setApps] = useState<OpenTarget[] | null>(null);
@@ -134,10 +136,19 @@ export default function App() {
   const sessionFor = useCallback((tab: Tab) => {
     let session = sessions.current.get(tab.id);
     if (!session) {
-      session = new TerminalSession(tab.id, tab.path, (id, status, agent) => {
-        setStatuses((prev) => ({ ...prev, [id]: status }));
-        setRunningAgents((prev) => ({ ...prev, [id]: agent }));
-      });
+      session = new TerminalSession(
+        tab.id,
+        tab.path,
+        (id, status, agent) => {
+          setStatuses((prev) => ({ ...prev, [id]: status }));
+          setRunningAgents((prev) => ({ ...prev, [id]: agent }));
+        },
+        (id, event) =>
+          setActivities((prev) => ({
+            ...prev,
+            [id]: applyActivity(prev[id] ?? EMPTY_ACTIVITY, event, Date.now()),
+          })),
+      );
       sessions.current.set(tab.id, session);
     }
     return session;
@@ -444,6 +455,7 @@ export default function App() {
     const { tabs: current, activeId: active } = latest.current;
     setTabs(current.filter((t) => t.id !== id));
     setStatuses(({ [id]: _closed, ...rest }) => rest);
+    setActivities(({ [id]: _gone, ...rest }) => rest);
     setActiveId(activeAfterClose(current, id, active));
   }, []);
 
@@ -740,7 +752,12 @@ export default function App() {
           )}
         </main>
         {sidebarOpen && activeTab && (
-          <Sidebar tab={activeTab} status={statuses[activeTab.id] ?? "off"} apps={apps} />
+          <Sidebar
+            tab={activeTab}
+            status={statuses[activeTab.id] ?? "off"}
+            apps={apps}
+            activity={activities[activeTab.id] ?? EMPTY_ACTIVITY}
+          />
         )}
       </div>
       {palette && (
