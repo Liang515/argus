@@ -4,8 +4,16 @@ export type Verb = "read" | "edit" | "write" | "run" | "search" | "web" | "agent
 
 /** 後端 activity.rs 的 Event（`k` 是種類）。 */
 export type ActivityEvent =
-  | { k: "prompt"; text: string; dedup?: boolean }
-  | { k: "start"; id?: string; verb: Verb; target: string; add?: number; detail?: string }
+  | { k: "prompt"; text: string; dedup?: boolean; detail?: string }
+  | {
+      k: "start";
+      id?: string;
+      verb: Verb;
+      target: string;
+      add?: number;
+      detail?: string;
+      path?: string;
+    }
   | { k: "end"; id?: string; ok: boolean }
   | {
       k: "done";
@@ -15,6 +23,7 @@ export type ActivityEvent =
       ok: boolean;
       add?: number;
       detail?: string;
+      path?: string;
     }
   | { k: "todos"; items: { text: string; status: string }[] }
   | { k: "stop" };
@@ -26,8 +35,10 @@ export interface ActivityItem {
   kind: "prompt" | Verb;
   target: string;
   add?: number;
-  /** 滑鼠移上去顯示的完整內容（例如整行指令） */
+  /** 點開看的完整內容（例如整行指令、多行訊息） */
   detail?: string;
+  /** 讀取、修改、寫入的檔案完整路徑，可以用編輯器打開 */
+  path?: string;
   /** prompt 沒有狀態；工具是 running → ok / fail，回覆結束時還沒收到結果的算 unknown */
   status?: "running" | "ok" | "fail" | "unknown";
   /** 執行花了多久（毫秒），只有收到結束事件才有 */
@@ -120,7 +131,7 @@ export function applyActivity(
       if (event.dedup && state.turnPrompt === event.text) return state;
       // 新的一輪：上一輪的計畫已經不一定適用，先清掉，等 agent 重新列
       return {
-        ...push({ at: now, kind: "prompt", target: event.text }),
+        ...push({ at: now, kind: "prompt", target: event.text, detail: event.detail }),
         todos: [],
         turnPrompt: event.text,
       };
@@ -132,6 +143,7 @@ export function applyActivity(
         target: event.target,
         add: event.add,
         detail: event.detail,
+        path: event.path,
         status: "running",
       });
     case "done":
@@ -142,6 +154,7 @@ export function applyActivity(
         target: event.target,
         add: event.add,
         detail: event.detail,
+        path: event.path,
         status: event.ok ? "ok" : "fail",
       });
     case "end": {

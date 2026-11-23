@@ -54,6 +54,14 @@ describe("applyActivity", () => {
       ["run", "ok", 4000],
     ]);
   });
+  it("保留完整內容與檔案路徑，給側欄展開和打開檔案用", () => {
+    const s = run([
+      [0, { k: "prompt", text: "第一行", detail: "第一行\n第二行" }],
+      [1, { k: "start", id: "e", verb: "edit", target: "src/a.ts", path: "/p/src/a.ts" }],
+    ]);
+    expect(s.items[0].detail).toBe("第一行\n第二行");
+    expect(s.items[1].path).toBe("/p/src/a.ts");
+  });
   it("沒有 id 時結束最後一筆還在執行的", () => {
     const s = run([
       [0, { k: "start", verb: "read", target: "a.ts" }],

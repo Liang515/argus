@@ -1,4 +1,6 @@
-import { useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { ExternalLink } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   type ActivityItem,
   type ActivityState,
@@ -65,12 +67,81 @@ function Result({ item }: { item: ActivityItem }) {
   return <span className="text-deck-muted">{extra}</span>;
 }
 
+/** 一筆動作：點一下展開完整內容；檔案可以直接用編輯器打開。 */
+function ActivityRow({
+  item,
+  open,
+  onToggle,
+}: {
+  item: ActivityItem;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const full = item.detail ?? item.target;
+  return (
+    <li className="group rounded hover:bg-deck-hover">
+      <div className="grid grid-cols-[2.6rem_2.9rem_1fr_auto] items-center gap-1.5 px-1.5 py-0.5">
+        <span className="text-[11px] text-deck-muted tabular-nums">{clock(item.at)}</span>
+        <span
+          className={`text-[11px] ${item.kind === "prompt" ? "text-deck-accent" : "text-deck-muted"}`}
+        >
+          {t(KIND_LABEL[item.kind])}
+        </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          title={t(open ? "act.collapse" : "act.expand")}
+          aria-expanded={open}
+          className={`truncate text-left ${item.kind === "prompt" ? "text-deck-text" : "font-mono text-[11.5px] text-deck-text"}`}
+        >
+          {item.target}
+        </button>
+        <span className="flex items-center gap-1 text-[11px]">
+          {item.path && (
+            <button
+              type="button"
+              onClick={() =>
+                void invoke("open_path", {
+                  path: item.path,
+                  reveal: false,
+                  line: null,
+                  column: null,
+                }).catch(() => {})
+              }
+              title={t("act.openFile")}
+              aria-label={t("act.openFile")}
+              className="rounded p-0.5 text-deck-muted opacity-0 group-hover:opacity-100 hover:text-deck-text focus:opacity-100"
+            >
+              <ExternalLink size={11} />
+            </button>
+          )}
+          <Result item={item} />
+        </span>
+      </div>
+      {open && (
+        <div className="mx-1.5 mb-1 ml-[5.6rem] rounded bg-deck-bg px-2 py-1.5 text-[11.5px] break-words whitespace-pre-wrap text-deck-text select-text">
+          {item.path && item.path !== full ? `${item.path}\n` : ""}
+          {full}
+        </div>
+      )}
+    </li>
+  );
+}
+
 /** 距離底部多近算「在底部」（像素）。 */
 const NEAR_BOTTOM_PX = 40;
 
 /** 側欄「活動」：Claude 的計畫進度與最近每一步動作。 */
 export function ActivityPanel({ activity }: { activity: ActivityState }) {
   const listRef = useRef<HTMLElement>(null);
+  // 展開看完整內容的那幾筆
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const toggle = (key: number) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
   // 使用者往上翻舊紀錄時不要被拉回最底；本來就在底部才跟著最新動作捲動
   const stickToBottom = useRef(true);
   const { done, total } = todoProgress(activity.todos);
@@ -129,26 +200,12 @@ export function ActivityPanel({ activity }: { activity: ActivityState }) {
           </header>
           <ul className="px-1.5">
             {activity.items.map((item) => (
-              <li
+              <ActivityRow
                 key={item.key}
-                title={item.detail ?? item.target}
-                className="grid grid-cols-[2.6rem_2.9rem_1fr_auto] items-center gap-1.5 rounded px-1.5 py-0.5 hover:bg-deck-hover"
-              >
-                <span className="text-[11px] text-deck-muted tabular-nums">{clock(item.at)}</span>
-                <span
-                  className={`text-[11px] ${item.kind === "prompt" ? "text-deck-accent" : "text-deck-muted"}`}
-                >
-                  {t(KIND_LABEL[item.kind])}
-                </span>
-                <span
-                  className={`truncate ${item.kind === "prompt" ? "text-deck-text" : "font-mono text-[11.5px] text-deck-text"}`}
-                >
-                  {item.target}
-                </span>
-                <span className="text-[11px]">
-                  <Result item={item} />
-                </span>
-              </li>
+                item={item}
+                open={expanded.has(item.key)}
+                onToggle={() => toggle(item.key)}
+              />
             ))}
           </ul>
         </section>

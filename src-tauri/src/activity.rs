@@ -28,6 +28,9 @@ pub enum Event {
         text: String,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         dedup: bool,
+        /// 完整訊息（和 text 不同時才帶，例如有好幾行或被截斷）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
     },
     /// 開始用一個工具
     Start {
@@ -38,9 +41,12 @@ pub enum Event {
         /// 修改或寫入時增加的行數
         #[serde(skip_serializing_if = "Option::is_none")]
         add: Option<i64>,
-        /// 滑鼠移上去看的完整內容（執行指令時是整行指令）
+        /// 點開看的完整內容（執行指令時是整行指令）
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
+        /// 讀取、修改、寫入的檔案完整路徑（側欄可以直接用編輯器打開）
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     /// 工具執行完
     End {
@@ -59,6 +65,8 @@ pub enum Event {
         add: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     /// Claude 的計畫清單（TodoWrite）
     Todos { items: Vec<Todo> },
@@ -80,6 +88,18 @@ fn clip_to(s: &str, max: usize) -> String {
         let cut: String = s.chars().take(max - 1).collect();
         format!("{cut}…")
     }
+}
+
+/// 點開時看的完整內容：和畫面上顯示的一樣就不帶，讓摘要維持精簡。
+fn fuller(full: &str, shown: &str) -> Option<String> {
+    let full = clip_to(full.trim(), MAX_DETAIL);
+    (!full.is_empty() && full != shown).then_some(full)
+}
+
+/// 檔案的完整路徑（給側欄的「用編輯器打開」）；沒有就是 None。
+fn abs_path(path: &str) -> Option<String> {
+    let path = path.trim();
+    Path::new(path).is_absolute().then(|| path.to_string())
 }
 
 /// 第一個非空白行，截到 MAX_TEXT。
@@ -126,7 +146,38 @@ fn describe_command(input: &Value) -> (String, Option<String>) {
 }
 
 /// 工具名稱 → 動作、對象、增加行數。TodoWrite、Bash 另外處理。
-fn describe(tool: &str, input: &Value, cwd: Option<&str>) -> (&'static str, String, Option<i64>) {
+/// (動作, 顯示的對象, 增加行數, 點開的完整內容, 檔案完整路徑)
+type Described = (
+    &'static str,
+    String,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+);
+
+/// Claude 的工具 → 活動資料。TodoWrite、Bash 另外處理。
+fn describe(tool: &str, input: &Value, cwd: Option<&str>) -> Described {
+    let (verb, target, add) = describe_basic(tool, input, cwd);
+    let file = first_str(input, &["file_path", "notebook_path"]);
+    let full = match verb {
+        "search" => str_of(input, "pattern"),
+        "web" => first_str(input, &["url", "query"]),
+        "agent" => first_str(input, &["prompt", "description"]),
+        _ => "",
+    };
+    let detail = if file.is_empty() {
+        fuller(full, &target)
+    } else {
+        None
+    };
+    (verb, target, add, detail, abs_path(file))
+}
+
+fn describe_basic(
+    tool: &str,
+    input: &Value,
+    cwd: Option<&str>,
+) -> (&'static str, String, Option<i64>) {
     let path = || display_path(str_of(input, "file_path"), cwd);
     match tool {
         "Read" => ("read", path(), None),
@@ -254,8 +305,13 @@ fn describe_agy(
 fn summarize_agy(v: &Value, cwd: Option<&str>) -> Option<Event> {
     match str_of(v, "hookEventName") {
         "PreInvocation" => {
-            let text = clip(str_of(v, "lastUserInput"));
-            (!text.is_empty()).then_some(Event::Prompt { text, dedup: true })
+            let full = str_of(v, "lastUserInput");
+            let text = clip(full);
+            (!text.is_empty()).then(|| Event::Prompt {
+                detail: fuller(full, &text),
+                text,
+                dedup: true,
+            })
         }
         "PostToolUse" => {
             let call = v.get("toolCall")?;
@@ -266,6 +322,11 @@ fn summarize_agy(v: &Value, cwd: Option<&str>) -> Option<Event> {
             let id = call.get("id").and_then(Value::as_str).map(str::to_string);
             let args = call.get("args").unwrap_or(&Value::Null);
             let (verb, target, add, detail) = describe_agy(tool, args, cwd);
+            let path = abs_path(first_str(
+                args,
+                &["Path", "AbsolutePath", "FilePath", "TargetFile"],
+            ))
+            .filter(|_| matches!(verb, "read" | "write" | "edit"));
             let ok = str_of(v, "error").trim().is_empty();
             Some(Event::Done {
                 id,
@@ -274,6 +335,7 @@ fn summarize_agy(v: &Value, cwd: Option<&str>) -> Option<Event> {
                 ok,
                 add,
                 detail,
+                path,
             })
         }
         "Stop" => Some(Event::Stop),
@@ -296,10 +358,15 @@ pub fn summarize(payload: &str) -> Option<Event> {
         .map(str::to_string);
     let input = v.get("tool_input").cloned().unwrap_or(Value::Null);
     match str_of(&v, "hook_event_name") {
-        "UserPromptSubmit" => Some(Event::Prompt {
-            text: clip(str_of(&v, "prompt")),
-            dedup: false,
-        }),
+        "UserPromptSubmit" => {
+            let full = str_of(&v, "prompt");
+            let text = clip(full);
+            Some(Event::Prompt {
+                detail: fuller(full, &text),
+                text,
+                dedup: false,
+            })
+        }
         "PreToolUse" if tool == "TodoWrite" => {
             let items = input
                 .get("todos")
@@ -321,16 +388,18 @@ pub fn summarize(payload: &str) -> Option<Event> {
                 target,
                 add: None,
                 detail,
+                path: None,
             })
         }
         "PreToolUse" => {
-            let (verb, target, add) = describe(tool, &input, cwd);
+            let (verb, target, add, detail, path) = describe(tool, &input, cwd);
             Some(Event::Start {
                 id,
                 verb,
                 target,
                 add,
-                detail: None,
+                detail,
+                path,
             })
         }
         "PostToolUse" if tool == "TodoWrite" => None,
@@ -378,6 +447,17 @@ mod tests {
             Some(Event::Prompt {
                 text: "做側欄活動面板".into(),
                 dedup: false,
+                // 有好幾行：點開看完整訊息
+                detail: Some("做側欄活動面板\n第二行".into()),
+            })
+        );
+        // 一行就放得下的訊息不重複帶完整內容
+        assert_eq!(
+            run(json!({"hook_event_name": "UserPromptSubmit", "prompt": "好"})),
+            Some(Event::Prompt {
+                text: "好".into(),
+                dedup: false,
+                detail: None,
             })
         );
         assert_eq!(run(json!({"hook_event_name": "Stop"})), Some(Event::Stop));
@@ -395,6 +475,7 @@ mod tests {
             Some(Event::Prompt {
                 text: "幫我修這個 bug".into(),
                 dedup: true,
+                detail: Some("幫我修這個 bug\n第二行".into()),
             })
         );
         assert_eq!(
@@ -421,6 +502,7 @@ mod tests {
                 ok: true,
                 add: None,
                 detail: Some("cargo test --quiet".into()),
+                path: None,
             })
         );
         assert_eq!(
@@ -445,6 +527,7 @@ mod tests {
                 ok: false,
                 add: Some(2),
                 detail: None,
+                path: Some("/p/src/lib.rs".into()),
             })
         );
         assert_eq!(
@@ -463,6 +546,7 @@ mod tests {
                 ok: true,
                 add: None,
                 detail: None,
+                path: Some("/p/README.md".into()),
             })
         );
         assert_eq!(run(json!({"hookEventName": "Stop"})), Some(Event::Stop));
@@ -484,7 +568,8 @@ mod tests {
                 verb: "read",
                 target: "src/a.ts".into(),
                 add: None,
-                detail: None
+                detail: None,
+                path: Some("/p/src/a.ts".into()),
             })
         );
         // 寫入整個檔案：只帶行數，不帶內容
