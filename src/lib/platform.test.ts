@@ -25,6 +25,8 @@ describe("platformText", () => {
     expect(win("⌘-click a path", "en")).toBe("Ctrl+click a path");
     expect(win("拖曳可調整順序（⌘⇧← →）")).toBe("拖曳可調整順序（Ctrl+Shift+PgUp / PgDn）");
     expect(win("⌘3")).toBe("Ctrl+3");
+    expect(win("↑ ↓ 或 ⌃N ⌃P")).toBe("↑ ↓ 或 Ctrl+N Ctrl+P");
+    expect(win("例如 Claude 的 ⇧Tab 切換模式")).toBe("例如 Claude 的 Shift+Tab 切換模式");
     expect(win("在 Finder 顯示並選取")).toBe("在 檔案總管 顯示並選取");
     expect(win("Reveal in Finder", "en")).toBe("Reveal in File Explorer");
     // 沒有 ⌘ 的不動

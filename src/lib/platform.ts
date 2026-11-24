@@ -23,7 +23,7 @@ export const isMac = platform === "mac";
  */
 const WINDOWS_KEYS: [string, string][] = [
   ["⌘⇧← →", "Ctrl+Shift+PgUp / PgDn"],
-  ["⌘⇧←  ⌘⇧→", "Ctrl+Shift+PgUp  Ctrl+Shift+PgDn"],
+  ["⌘⇧←  ⌘⇧→", "Ctrl+Shift+PgUp / PgDn"],
   ["⌘⇧[  ⌘⇧]", "Ctrl+Shift+Tab  Ctrl+Tab"],
   ["⌘⇧T", "Ctrl+Shift+D"],
   ["⌘⌥＋", "Ctrl+Alt+"],
@@ -44,6 +44,10 @@ const WINDOWS_KEYS: [string, string][] = [
   ["⌘J", "Ctrl+Shift+J"],
   ["⌘B", "Ctrl+Shift+B"],
   ["⌘/", "Ctrl+Shift+/"],
+  // 剩下的修飾鍵符號（例如 ⌃N、⇧Tab）
+  ["⌃", "Ctrl+"],
+  ["⇧↩", "Shift+Enter"],
+  ["⇧", "Shift+"],
 ];
 
 /** Finder 在 Windows 上叫「檔案總管」。 */

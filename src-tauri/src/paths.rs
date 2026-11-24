@@ -43,15 +43,16 @@ pub struct ResolvedPath {
     pub is_dir: bool,
 }
 
-/// `~/` 換成家目錄，相對路徑接在 `base`（分頁的專案資料夾）後面。
+/// `~/`（Windows 也接受 `~\`）換成家目錄，相對路徑接在 `base`（分頁的專案資料夾）後面。
+/// 網路路徑不解析（見 [`crate::sys::is_network_path`]）。
 pub fn expand(base: &Path, home: Option<&Path>, raw: &str) -> Option<PathBuf> {
-    if raw.is_empty() {
+    if raw.is_empty() || crate::sys::is_network_path(raw) {
         return None;
     }
     if raw == "~" {
         return home.map(Path::to_path_buf);
     }
-    if let Some(rest) = raw.strip_prefix("~/") {
+    if let Some(rest) = strip_home(raw) {
         return home.map(|h| h.join(rest));
     }
     let path = Path::new(raw);
@@ -59,6 +60,17 @@ pub fn expand(base: &Path, home: Option<&Path>, raw: &str) -> Option<PathBuf> {
         path.to_path_buf()
     } else {
         base.join(path)
+    })
+}
+
+/// `~/x` 的 `x`；Windows 也認 `~\x`。
+pub fn strip_home(raw: &str) -> Option<&str> {
+    raw.strip_prefix("~/").or_else(|| {
+        if cfg!(windows) {
+            raw.strip_prefix("~\\")
+        } else {
+            None
+        }
     })
 }
 
@@ -217,6 +229,9 @@ pub async fn open_path(
     column: Option<u32>,
     editor: Option<String>,
 ) -> Result<(), String> {
+    if crate::sys::is_network_path(&path) {
+        return Err("open_failed".into());
+    }
     // 先解開符號連結：名為 pic.png 卻指向某個 .app 的連結，要用實際的目標判斷
     let real = crate::sys::canonicalize(&path).map_err(|_| "file_missing".to_string())?;
     let target = real.as_path();
@@ -245,6 +260,30 @@ pub async fn open_path(
 mod tests {
     use super::*;
     use crate::editors::find;
+
+    #[test]
+    fn network_paths_from_terminal_output_are_never_resolved() {
+        let base = Path::new("/proj");
+        assert_eq!(expand(base, None, r"\\attacker\share\a.txt"), None);
+        assert_eq!(expand(base, None, "//attacker/share/a.txt"), None);
+        assert_eq!(resolve(base, None, r"\\attacker\share\a.txt"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_scripts_without_an_editor_are_only_revealed() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = dir.path().join("run.py");
+        fs::write(&script, "print(1)").unwrap();
+        assert_eq!(
+            decide(&script, false, false, None, None, None),
+            OpenAction::Reveal
+        );
+        assert!(matches!(
+            decide(&script, false, false, find("vscode"), None, None),
+            OpenAction::Editor(_)
+        ));
+    }
 
     #[test]
     fn editor_url_handles_windows_drive_paths() {

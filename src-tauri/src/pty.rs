@@ -65,14 +65,25 @@ fn child_env(
     parent: impl IntoIterator<Item = (String, String)>,
     extra: Vec<(String, String)>,
 ) -> Vec<(String, String)> {
+    // Windows 的環境變數名稱不分大小寫
+    let name = |k: &str| {
+        if cfg!(windows) {
+            k.to_ascii_uppercase()
+        } else {
+            k.to_string()
+        }
+    };
     let mut env: Vec<(String, String)> = parent
         .into_iter()
         .filter(|(k, _)| {
+            let k = name(k);
             !(k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_") || k.starts_with("ARGUS_"))
         })
-        .filter(|(k, _)| !matches!(k.as_str(), "TERM" | "COLORTERM" | "TERM_PROGRAM"))
+        .filter(|(k, _)| !matches!(name(k).as_str(), "TERM" | "COLORTERM" | "TERM_PROGRAM"))
         .collect();
-    if !env.iter().any(|(k, _)| k == "LANG") {
+    // macOS 的 GUI App 沒有 LANG，補上 UTF-8 才不會亂碼。Windows 不用 LANG 決定編碼，
+    // 補了反而會讓 git 等工具改用英文訊息
+    if !cfg!(windows) && !env.iter().any(|(k, _)| k == "LANG") {
         env.push(("LANG".into(), "en_US.UTF-8".into()));
     }
     env.push(("TERM".into(), "xterm-256color".into()));
@@ -302,14 +313,17 @@ fn is_busy(session: &Session) -> bool {
     }
 }
 
-/// Windows 沒有前景行程群組：shell 底下有子行程（agent、npm run dev…）就算在忙。
+/// Windows 沒有前景行程群組：shell 還活著、而且底下有子行程（agent、npm run dev…）就算在忙。
+/// 已知限制：從 PowerShell 直接開的 GUI 程式（例如 `notepad a.txt`）開著時也會算忙碌。
 #[cfg(windows)]
 fn is_busy(session: &Session) -> bool {
-    session.shell_pid.is_some_and(has_child_process)
+    session.shell_pid.is_some_and(shell_has_child)
 }
 
+/// 一次快照同時確認 shell 本身還在：shell 結束後，Windows 不會改掉它留下的子行程的父行程編號，
+/// 只看「父行程是 pid」的話，已關閉的分頁會一直被當成在忙。
 #[cfg(windows)]
-fn has_child_process(pid: u32) -> bool {
+fn shell_has_child(pid: u32) -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
@@ -323,25 +337,28 @@ fn has_child_process(pid: u32) -> bool {
         }
         let mut entry: PROCESSENTRY32W = std::mem::zeroed();
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-        let mut found = false;
+        let mut shell_alive = false;
+        let mut child = false;
         let mut ok = Process32FirstW(snapshot, &mut entry) != 0;
         while ok {
-            // conhost 是 ConPTY 自己的輔助行程，不算使用者啟動的程式
-            if entry.th32ParentProcessID == pid && !is_conhost(&entry.szExeFile) {
-                found = true;
-                break;
+            if entry.th32ProcessID == pid {
+                shell_alive = true;
+            } else if entry.th32ParentProcessID == pid && !is_console_host(&entry.szExeFile) {
+                child = true;
             }
             ok = Process32NextW(snapshot, &mut entry) != 0;
         }
         CloseHandle(snapshot);
-        found
+        shell_alive && child
     }
 }
 
+/// conhost／OpenConsole 是 ConPTY 自己的輔助行程，不算使用者啟動的程式。
 #[cfg(windows)]
-fn is_conhost(exe: &[u16]) -> bool {
+fn is_console_host(exe: &[u16]) -> bool {
     let len = exe.iter().position(|&c| c == 0).unwrap_or(exe.len());
-    String::from_utf16_lossy(&exe[..len]).eq_ignore_ascii_case("conhost.exe")
+    let name = String::from_utf16_lossy(&exe[..len]);
+    name.eq_ignore_ascii_case("conhost.exe") || name.eq_ignore_ascii_case("OpenConsole.exe")
 }
 
 #[cfg(test)]
@@ -391,6 +408,8 @@ mod tests {
         assert_eq!(get(&env, "ARGUS_TAB_ID"), Some("tab1"));
     }
 
+    // Windows 不補 LANG（見 child_env）
+    #[cfg(unix)]
     #[test]
     fn lang_defaults_to_utf8_but_keeps_user_value() {
         let env = child_env(env_of(&[]), vec![]);

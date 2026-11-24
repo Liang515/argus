@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { findPathCandidates, lineText } from "./filePaths";
+
+// 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
+vi.mock("./platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./platform")>()),
+  platform: "mac",
+  isMac: true,
+}));
 
 const paths = (text: string) => findPathCandidates(text).map((c) => c.path);
 
@@ -44,10 +51,22 @@ describe("lineText", () => {
 
 describe("Windows 路徑", () => {
   it("認得磁碟代號與反斜線路徑，並拆出行號", () => {
-    const found = findPathCandidates("error at C:\\proj\\src\\a.ts:12:3 and src\\b.ts");
+    const found = findPathCandidates("error at C:\\proj\\src\\a.ts:12:3 and src\\b.ts", "windows");
     expect(found.map((c) => [c.path, c.line, c.column])).toEqual([
       ["C:\\proj\\src\\a.ts", 12, 3],
       ["src\\b.ts", undefined, undefined],
     ]);
+  });
+});
+
+describe("不當成路徑的", () => {
+  it("網路路徑（滑過就會連線）兩個平台都略過", () => {
+    for (const target of ["mac", "windows"] as const) {
+      expect(findPathCandidates("see \\\\attacker\\share\\a.txt", target)).toEqual([]);
+      expect(findPathCandidates("see //attacker/share/a.txt", target)).toEqual([]);
+    }
+  });
+  it("macOS 不把反斜線字串（\\n、正規表示式）當路徑", () => {
+    expect(findPathCandidates("printf a\\nb and C:\\x\\y", "mac")).toEqual([]);
   });
 });

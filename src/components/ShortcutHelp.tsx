@@ -114,7 +114,9 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
               <dl className="space-y-1 text-[13px]">
                 {group.items.map(([keys, desc]) => (
                   <div key={keys} className="flex gap-4">
-                    <dt className="w-40 shrink-0 font-mono text-deck-text">{keys}</dt>
+                    <dt className={`${isMac ? "w-40" : "w-52"} shrink-0 font-mono text-deck-text`}>
+                      {keys}
+                    </dt>
                     <dd className="text-deck-muted">{desc}</dd>
                   </div>
                 ))}

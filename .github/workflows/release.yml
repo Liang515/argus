@@ -58,8 +58,11 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: Argus ${{ github.ref_name }}
           releaseBody: |
-            下載 `.dmg`，把 Argus 拖進「應用程式」即可。
-            Download the `.dmg` and drag Argus into Applications.
+            macOS：下載 `.dmg`，把 Argus 拖進「應用程式」即可。
+            Windows：下載 `_x64-setup.exe` 執行。安裝檔目前沒有程式碼簽章，若出現「Windows 已保護您的電腦」，請按「其他資訊」→「仍要執行」。
+
+            macOS: download the `.dmg` and drag Argus into Applications.
+            Windows: download and run the `_x64-setup.exe`. The installer isn't code-signed yet; if SmartScreen says "Windows protected your PC", click "More info" → "Run anyway".
           releaseDraft: true
 
       # 有設 Apple 憑證卻沒簽好或沒公證（例如密碼過期）時讓這次 release 失敗，
@@ -104,8 +107,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          args: --bundles nsis --config src-tauri/tauri.release.conf.json
+          args: --config src-tauri/tauri.release.conf.json
           releaseId: ${{ needs.macos.outputs.releaseId }}
+          # 和 macOS job 一致，latest.json 裡的下載網址才會用正式的標籤路徑
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseDraft: true
+          updaterJsonPreferNsis: true
 
       - uses: actions/upload-artifact@v4
         with:

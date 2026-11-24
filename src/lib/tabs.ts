@@ -77,9 +77,10 @@ function windowsShortcut(e: KeyLike): ShortcutAction | null {
     if (letter === "B") return { type: "sidebar" };
     return null;
   }
-  if (e.code === "Equal") return { type: "zoom", delta: 1 };
-  if (e.code === "Minus") return { type: "zoom", delta: -1 };
-  if (e.code === "Digit0") return { type: "zoom", delta: 0 };
+  // 數字鍵盤的 + − 0 也可以
+  if (e.code === "Equal" || e.code === "NumpadAdd") return { type: "zoom", delta: 1 };
+  if (e.code === "Minus" || e.code === "NumpadSubtract") return { type: "zoom", delta: -1 };
+  if (e.code === "Digit0" || e.code === "Numpad0") return { type: "zoom", delta: 0 };
   const digit = /^Digit([1-9])$/.exec(e.code)?.[1];
   if (digit) return { type: "select", index: digit === "9" ? -1 : Number(digit) - 1 };
   return null;

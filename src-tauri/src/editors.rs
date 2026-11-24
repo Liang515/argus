@@ -104,11 +104,25 @@ pub fn open_with(editor: &Editor, target: &str) -> bool {
     run("-b", editor.bundle) || run("-a", editor.app.trim_end_matches(".app"))
 }
 
-/// Windows：執行編輯器的命令列工具。不等它結束（`code` 會一直開著）。
+/// Windows：有網址 scheme 的編輯器（VS Code 系）用 `vscode://file/…` 打開，
+/// 不經過 `code.cmd`：批次檔的參數會被 cmd.exe 再解讀一次，路徑裡的 `%`、`&` 可能出問題。
+/// 沒有 scheme 的（Zed）才執行命令列工具；只有批次檔可用、而路徑含 cmd.exe 特殊字元時不開。
 #[cfg(not(target_os = "macos"))]
 pub fn open_with(editor: &Editor, target: &str) -> bool {
-    crate::sys::find_in_path(editor.cli)
-        .is_some_and(|cli| crate::sys::command(cli).arg(target).spawn().is_ok())
+    if let Some(scheme) = editor.scheme {
+        return crate::sys::open_url(&crate::paths::editor_url(scheme, target, None, None)).is_ok();
+    }
+    let Some(cli) = crate::sys::find_in_path(editor.cli) else {
+        return false;
+    };
+    let is_batch = cli
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"));
+    if is_batch && target.contains(['%', '&', '^', '!', '"', '|', '<', '>']) {
+        return false;
+    }
+    crate::sys::command(cli).arg(target).spawn().is_ok()
 }
 
 #[derive(Serialize)]

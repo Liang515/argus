@@ -164,9 +164,14 @@ pub(crate) fn app_installed(bundle: &str, default_name: &str) -> bool {
 /// target 只能是 "finder"（兩個平台都用這個 id）或 [`crate::editors::EDITORS`] 裡的 id。
 #[tauri::command]
 pub fn open_in(path: String, target: String) -> Result<(), String> {
-    if !Path::new(&path).is_dir() {
-        return Err("dir_missing".into());
-    }
+    // 先轉成絕對路徑，不會被編輯器當成 `-` 開頭的選項。
+    // 路徑是使用者自己開的分頁資料夾，放在網路磁碟上也照常打開（終端機輸出裡的路徑才擋，見 paths.rs）
+    let path = crate::sys::canonicalize(&path)
+        .ok()
+        .filter(|p| p.is_dir())
+        .ok_or("dir_missing")?
+        .to_string_lossy()
+        .into_owned();
     let opened = if target == "finder" {
         crate::sys::open_default(Path::new(&path)).is_ok()
     } else {

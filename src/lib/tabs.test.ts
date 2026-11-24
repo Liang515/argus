@@ -248,6 +248,8 @@ describe("Windows 快捷鍵（Ctrl+Shift，同 Windows Terminal）", () => {
     expect(win("Equal", { shiftKey: false })).toEqual({ type: "zoom", delta: 1 });
     expect(win("Minus", { shiftKey: false })).toEqual({ type: "zoom", delta: -1 });
     expect(win("Digit0", { shiftKey: false })).toEqual({ type: "zoom", delta: 0 });
+    expect(win("NumpadAdd", { shiftKey: false })).toEqual({ type: "zoom", delta: 1 });
+    expect(win("NumpadSubtract", { shiftKey: false })).toEqual({ type: "zoom", delta: -1 });
   });
   it("⌘ 組合在 Windows 上不觸發，Ctrl 組合在 macOS 上也不觸發", () => {
     expect(win("KeyT", { ctrlKey: false, metaKey: true, shiftKey: false })).toBeNull();

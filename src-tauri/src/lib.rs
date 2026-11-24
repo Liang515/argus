@@ -13,6 +13,7 @@ mod workspace;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, WindowEvent};
 
@@ -91,6 +92,7 @@ fn cancel_quit(gate: tauri::State<'_, QuitGate>) {
 
 /// 自訂選單：保留編輯（複製／貼上）與視窗功能，
 /// 但不放「Close Window」，讓 Cmd+W 交給前端關分頁。
+#[cfg(target_os = "macos")]
 fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let app_menu = Submenu::with_items(
         app,
@@ -141,7 +143,11 @@ pub fn hook_summary_main() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // macOS 的選單在螢幕頂端；Windows 設了選單（即使是空的）會在視窗裡多一排選單列，所以不設
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(build_menu);
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -153,14 +159,6 @@ pub fn run() {
         ))
         .manage(project::Watchers::default())
         .manage(QuitGate::default())
-        // macOS 的選單在螢幕頂端；Windows 的選單會變成視窗裡的一排選單列，不需要
-        .menu(|app| {
-            if cfg!(target_os = "macos") {
-                build_menu(app)
-            } else {
-                Menu::new(app)
-            }
-        })
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,

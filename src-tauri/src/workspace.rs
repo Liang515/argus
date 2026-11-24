@@ -97,7 +97,7 @@ pub fn resolve_dir_in(input: &str, home: &Path) -> Option<PathBuf> {
     let input = input.trim();
     let path = if input == "~" {
         home.to_path_buf()
-    } else if let Some(rest) = input.strip_prefix("~/") {
+    } else if let Some(rest) = crate::paths::strip_home(input) {
         home.join(rest)
     } else {
         PathBuf::from(input)
