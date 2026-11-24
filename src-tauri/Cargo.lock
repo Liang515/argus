@@ -70,7 +70,7 @@ dependencies = [
 
 [[package]]
 name = "argus"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "dirs",
  "dunce",
