@@ -108,8 +108,9 @@ export function CommandPalette({
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    // 注音等輸入法組字中的 Enter / 方向鍵交給輸入法
-    if (e.nativeEvent.isComposing) return;
+    // 注音等輸入法組字中的 Enter / 方向鍵交給輸入法。
+    // macOS WebKit 送字的那下 Enter 會先結束組字才送 keydown，isComposing 已是 false，只能看 keyCode 229
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     const move = (delta: number) => {
       e.preventDefault();
       setSelected((s) => (s + delta + items.length) % items.length);
