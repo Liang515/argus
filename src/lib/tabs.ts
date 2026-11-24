@@ -153,6 +153,16 @@ export function hiddenTabIds(
     .map((t) => t.id);
 }
 
+/** 把分頁完整捲進可見區所需的水平捲動增量（0 代表已經完整可見）。 */
+export function scrollDelta(
+  view: { left: number; right: number },
+  item: { left: number; right: number },
+): number {
+  if (item.left < view.left) return Math.floor(item.left - view.left);
+  if (item.right > view.right) return Math.ceil(item.right - view.right);
+  return 0;
+}
+
 /**
  * 看不到的分頁裡出現了哪些狀態，給「全部分頁」按鈕各亮一顆提醒點：
  * 依等你確認、已完成（等你看結果）、執行中排序。待命或沒有 agent 不提醒。

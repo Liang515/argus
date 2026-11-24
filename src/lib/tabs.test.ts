@@ -6,6 +6,7 @@ import {
   moveTab,
   overflowAlerts,
   resolveSelect,
+  scrollDelta,
   shortcutAction,
   shortPath,
   type Tab,
@@ -173,6 +174,16 @@ describe("hiddenTabIds", () => {
   });
   it("差幾個像素（邊框、小數）不算被切掉", () => {
     expect(hiddenTabIds(view, [{ id: "a", left: 98, right: 502 }])).toEqual([]);
+  });
+});
+
+describe("scrollDelta", () => {
+  const view = { left: 100, right: 500 };
+  it("完全在可見區內不捲動；左邊或右邊超出時補齊整數像素", () => {
+    expect(scrollDelta(view, { left: 100, right: 220 })).toBe(0);
+    expect(scrollDelta(view, { left: 380, right: 500 })).toBe(0);
+    expect(scrollDelta(view, { left: 440, right: 520.3 })).toBe(21);
+    expect(scrollDelta(view, { left: 89.4, right: 210 })).toBe(-11);
   });
 });
 
