@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AGENTS, type AgentId } from "../lib/agents";
 import { rank } from "../lib/fuzzy";
 import { lang, t } from "../lib/i18n";
+import { isMac } from "../lib/platform";
 import type { GitChange } from "../lib/project";
 import { type ProjectRecap, projectStatus, relativeTime } from "../lib/recap";
 import type { ClaudeStatus } from "../lib/status";
@@ -153,7 +154,7 @@ export function RecapPanel({
         {error && <p className="px-4 pt-2 text-[12px] text-status-alert">{error}</p>}
         {items.length === 0 ? (
           <p className="px-4 py-6 text-center text-[13px] text-deck-muted">
-            {recaps.length === 0 ? t("recap.empty") : t("recap.noMatch")}
+            {recaps.length === 0 ? t(isMac ? "recap.empty" : "recap.emptyWin") : t("recap.noMatch")}
           </p>
         ) : (
           <ul ref={listRef} className="overflow-y-auto p-1.5">

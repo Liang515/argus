@@ -57,6 +57,7 @@ const zh = {
   "side.tabChanges": "變更",
   "side.tabHandoff": "交接",
   "act.empty": "Claude 或 Antigravity 開始工作後，這裡會即時顯示計畫和每一步動作。",
+  "act.emptyWin": "Windows 版還不會顯示 agent 的計畫與每一步動作，下一版加入。",
   "act.plan": "計畫",
   "act.recent": "最近動作",
   "act.you": "你",
@@ -210,6 +211,7 @@ const zh = {
   "recap.buttonTitle": "近況：各專案最近做了什麼 (⌘J)",
   "recap.placeholder": "搜尋專案或做過的事",
   "recap.empty": "還沒有紀錄。agent 在專案裡動作後，這裡會列出最後一句指令和改過的檔案。",
+  "recap.emptyWin": "Windows 版還不會記錄 agent 的指令與改過的檔案，下一版加入。",
   "recap.noMatch": "沒有符合的專案",
   "recap.noPrompt": "（沒有記到指令）",
   "recap.promptBy": "{agent}：",
@@ -279,6 +281,8 @@ const en: Record<MessageKey, string> = {
   "side.tabHandoff": "Handoff",
   "act.empty":
     "Once Claude or Antigravity starts working, its plan and each step show up here as they happen.",
+  "act.emptyWin":
+    "The Windows version doesn't show the agent's plan and steps yet. Coming in the next release.",
   "act.plan": "Plan",
   "act.recent": "Recent",
   "act.you": "You",
@@ -437,6 +441,8 @@ const en: Record<MessageKey, string> = {
   "recap.placeholder": "Search projects or what you did",
   "recap.empty":
     "Nothing yet. Once an agent works in a project, its last prompt and edited files show up here.",
+  "recap.emptyWin":
+    "The Windows version doesn't record the agent's prompts and edited files yet. Coming in the next release.",
   "recap.noMatch": "No matching projects",
   "recap.noPrompt": "(no prompt recorded)",
   "recap.promptBy": "{agent}: ",
