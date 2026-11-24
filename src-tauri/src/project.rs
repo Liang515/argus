@@ -45,7 +45,7 @@ pub fn parse_porcelain(output: &str) -> Vec<GitChange> {
 /// 不是 git repo 時回傳 None。
 #[tauri::command]
 pub async fn git_status(path: String) -> Result<Option<Vec<GitChange>>, String> {
-    let output = Command::new("git")
+    let output = crate::sys::command("git")
         .args(["status", "--porcelain=v1", "-z"])
         .current_dir(&path)
         // 不搶 index.lock，避免跟 Claude 同時執行的 git 指令衝突
@@ -143,9 +143,10 @@ pub fn add_handoff_protocol(path: String, lang: Option<String>) -> Result<(), St
 }
 
 /// 用 Spotlight 依 bundle id 找 App；Spotlight 關掉時退回檢查預設安裝位置。
+#[cfg(target_os = "macos")]
 pub(crate) fn app_installed(bundle: &str, default_name: &str) -> bool {
     let query = format!("kMDItemCFBundleIdentifier == '{bundle}'");
-    let found = Command::new("/usr/bin/mdfind")
+    let found = crate::sys::command("/usr/bin/mdfind")
         .arg(&query)
         .output()
         .map(|out| out.status.success() && !out.stdout.trim_ascii().is_empty())
@@ -159,17 +160,20 @@ pub(crate) fn app_installed(bundle: &str, default_name: &str) -> bool {
         .any(|dir| dir.join(default_name).is_dir())
 }
 
-/// 用 Finder 或支援的編輯器打開專案資料夾；target 只能是 "finder" 或 [`crate::editors::EDITORS`] 裡的 id。
+/// 用 Finder／檔案總管或支援的編輯器打開專案資料夾；
+/// target 只能是 "finder"（兩個平台都用這個 id）或 [`crate::editors::EDITORS`] 裡的 id。
 #[tauri::command]
 pub fn open_in(path: String, target: String) -> Result<(), String> {
-    if !Path::new(&path).is_dir() {
-        return Err("dir_missing".into());
-    }
+    // 先轉成絕對路徑，不會被編輯器當成 `-` 開頭的選項。
+    // 路徑是使用者自己開的分頁資料夾，放在網路磁碟上也照常打開（終端機輸出裡的路徑才擋，見 paths.rs）
+    let path = crate::sys::canonicalize(&path)
+        .ok()
+        .filter(|p| p.is_dir())
+        .ok_or("dir_missing")?
+        .to_string_lossy()
+        .into_owned();
     let opened = if target == "finder" {
-        Command::new("/usr/bin/open")
-            .arg(&path)
-            .status()
-            .is_ok_and(|s| s.success())
+        crate::sys::open_default(Path::new(&path)).is_ok()
     } else {
         let editor = crate::editors::find(&target).ok_or("app_missing")?;
         crate::editors::open_with(editor, &path)
@@ -196,7 +200,7 @@ pub fn pick_worktree(
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+    let output = crate::sys::command("git")
         .args(args)
         .current_dir(dir)
         .output()
@@ -241,27 +245,19 @@ const AGENT_BINARIES: [&str; 3] = ["claude", "agy", "codex"];
 pub fn find_agents(path_var: &str) -> Vec<String> {
     AGENT_BINARIES
         .iter()
-        .filter(|bin| {
-            path_var.split(':').filter(|d| !d.is_empty()).any(|dir| {
-                let file = Path::new(dir).join(bin);
-                fs::metadata(&file)
-                    .map(|m| {
-                        m.is_file()
-                            && std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111
-                                != 0
-                    })
-                    .unwrap_or(false)
-            })
-        })
+        .filter(|bin| crate::sys::find_in(path_var, bin).is_some())
         .map(|b| b.to_string())
         .collect()
 }
 
+#[cfg_attr(windows, allow(dead_code))]
 const PATH_MARK: &str = "__ARGUS_PATH__";
 /// 互動式 shell 可能被使用者設定拖住（自動更新、tmux 等），超過就改用 App 自己的 PATH。
+#[cfg_attr(windows, allow(dead_code))]
 const SHELL_PATH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// 取標記下一行：shell 設定可能也會印東西。`printenv PATH` 在 zsh、bash、fish 都是冒號分隔。
+#[cfg_attr(windows, allow(dead_code))]
 pub fn path_after_marker(stdout: &str) -> Option<String> {
     let mut lines = stdout.lines();
     lines.find(|l| l.trim() == PATH_MARK)?;
@@ -272,6 +268,7 @@ pub fn path_after_marker(stdout: &str) -> Option<String> {
 }
 
 /// 執行指令並在時限內取得 stdout；逾時就結束它並回傳 None。
+#[cfg_attr(windows, allow(dead_code))]
 pub fn stdout_within(mut cmd: Command, limit: std::time::Duration) -> Option<String> {
     use std::io::Read;
     use std::process::Stdio;
@@ -302,11 +299,19 @@ pub fn stdout_within(mut cmd: Command, limit: std::time::Duration) -> Option<Str
     }
 }
 
+/// Windows 的 GUI App 本來就拿到使用者的 PATH，不必另外問 shell。
+#[cfg(windows)]
+#[tauri::command]
+pub async fn detect_agents() -> Vec<String> {
+    find_agents(&crate::sys::current_path())
+}
+
 /// GUI App 拿不到使用者的 PATH，所以問一次 login shell（會載入 .zshrc）。
+#[cfg(not(windows))]
 #[tauri::command]
 pub async fn detect_agents() -> Vec<String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let mut cmd = Command::new(&shell);
+    let mut cmd = crate::sys::command(&shell);
     cmd.args([
         "-l",
         "-i",
@@ -428,6 +433,7 @@ mod tests {
         assert_eq!(path_after_marker("__ARGUS_PATH__\n"), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn shell_query_gives_up_after_the_time_limit() {
         let start = std::time::Instant::now();
@@ -507,6 +513,7 @@ mod tests {
         assert_eq!(classify(&p("/proj/.git/CLAUDE.md")), (false, false));
     }
 
+    #[cfg(unix)]
     #[test]
     fn open_in_rejects_unknown_targets() {
         let dir = tempfile::tempdir().unwrap();
@@ -621,6 +628,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn finds_executable_agents_in_path_order() {
         let dir = tempfile::tempdir().unwrap();

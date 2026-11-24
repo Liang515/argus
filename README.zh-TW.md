@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-給 coding agent 用的 macOS 終端機工作區。每個專案一個分頁，在裡面跑 Claude Code、Antigravity CLI（`agy`）或 Codex，一眼看出哪個 agent 正在工作、哪個在等你確認、哪個已經完成。
+給 coding agent 用的終端機工作區，支援 macOS（Windows 版為預覽版）。每個專案一個分頁，在裡面跑 Claude Code、Antigravity CLI（`agy`）或 Codex，一眼看出哪個 agent 正在工作、哪個在等你確認、哪個已經完成。
 
 ![Argus 示範動畫：分頁狀態燈、即時 Git 變更、HANDOFF.md 側欄、多 agent 選單與快速切換器](docs/demo.gif)
 
@@ -64,10 +64,18 @@ brew trust --tap liang515/tap   # 第一次才需要
 brew install --cask liang515/tap/argus
 ```
 
+### Windows（預覽版）
+
+從 [Releases](https://github.com/Liang515/argus/releases) 下載最新的 `Argus_*_x64-setup.exe` 執行。安裝檔目前沒有程式碼簽章，如果出現「Windows 已保護您的電腦」，請按 **其他資訊** → **仍要執行**。
+
+Windows 版每個分頁開 PowerShell（有裝 PowerShell 7 就用它），快捷鍵和 Windows Terminal 一樣用 Ctrl+Shift：Ctrl+Shift+T 開分頁、Ctrl+Shift+K 切換器、Ctrl+Shift+J 近況、Ctrl+Tab 下一個分頁、Ctrl+1–9 跳到分頁、Ctrl+Shift+C／Ctrl+V 複製貼上、Ctrl＋點擊開啟路徑。按 Ctrl+Shift+/ 看全部。
+
+Windows 版還沒有的：執行中與已完成的燈號、活動面板，以及近況裡的指令與改過的檔案（這些需要 agent 的 hook，下一版加入）。「等你確認」燈號靠畫面文字偵測；「跟隨終端機」配色只有 macOS 有。
+
 需求：
 
-- macOS（Apple Silicon 或 Intel）。
-- 狀態燈需要 shell 是 zsh（macOS 預設）。
+- macOS（Apple Silicon 或 Intel），或 Windows 10／11（x64；Arm64 透過模擬執行）。
+- macOS 的狀態燈需要 shell 是 zsh（預設就是）。
 - 至少一個 agent：[Claude Code](https://code.claude.com/docs/en/setup)、[Antigravity CLI](https://antigravity.google/docs/cli/install) 或 [Codex](https://developers.openai.com/codex/cli/)。沒裝的 Argus 會顯示安裝連結，裝好後就能直接用。
 
 ## Argus 會在你的電腦寫入什麼
@@ -79,14 +87,16 @@ Argus 不會改你自己的 shell 或 agent 設定，只會寫入：
 - 專案的 `CLAUDE.md`：只有你在側欄按「加入交接規則」時才會寫。
 - 專案旁邊的 `<專案>-wt-N` 資料夾：只有你選擇用新的 Git worktree 開分頁時才會建立。
 
+Windows 版只會寫入 `%USERPROFILE%\.argus\`（存下的分頁、近況與自訂 agent），目前沒有狀態 hook。
+
 ## 從原始碼 build
 
-需要 Node.js 20 以上、Rust（stable）與 Xcode 命令列工具。
+需要 Node.js 20 以上、Rust（stable）與 Xcode 命令列工具（Windows 需要 Visual Studio C++ 建置工具與 WebView2，見 [Tauri 的需求說明](https://v2.tauri.app/start/prerequisites/)）。
 
 ```sh
 npm ci
 npm run tauri dev     # 開發模式執行
-npm run tauri build   # 產生 Argus.app 與 .dmg
+npm run tauri build   # macOS：Argus.app 與 .dmg；Windows：NSIS 安裝檔
 ```
 
 預設用 ad-hoc 簽名。要用自己的憑證簽名，build 前設定環境變數 `APPLE_SIGNING_IDENTITY`。自動更新用的檔案（`.app.tar.gz` 與簽名）只在發版流程產生，自己 build 不需要簽名金鑰。

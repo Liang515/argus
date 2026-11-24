@@ -8,6 +8,7 @@ import {
   todoProgress,
 } from "../lib/activity";
 import { type MessageKey, t } from "../lib/i18n";
+import { isMac } from "../lib/platform";
 import { openPath } from "../lib/project";
 
 const KIND_LABEL: Record<ActivityItem["kind"], MessageKey> = {
@@ -153,7 +154,7 @@ export function ActivityPanel({ activity }: { activity: ActivityState }) {
   };
 
   if (activity.items.length === 0 && total === 0) {
-    return <p className="px-3 py-3 text-deck-muted">{t("act.empty")}</p>;
+    return <p className="px-3 py-3 text-deck-muted">{t(isMac ? "act.empty" : "act.emptyWin")}</p>;
   }
 
   return (

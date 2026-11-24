@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { editKey, handleEditKeyEvent } from "./editKeys";
 
+// 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
+vi.mock("./platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./platform")>()),
+  platform: "mac",
+  isMac: true,
+}));
+
 const key = (
   code: string,
   mods: Partial<Record<"meta" | "alt" | "ctrl" | "shift", boolean>> = {},
@@ -83,5 +90,50 @@ describe("handleEditKeyEvent", () => {
     const e = event("KeyX");
     expect(handleEditKeyEvent(e, vi.fn())).toBe(true);
     expect(e.prevented()).toBe(false);
+  });
+});
+
+describe("Windows 編輯鍵", () => {
+  const key = (code: string, extra: Partial<KeyboardEvent> = {}) => ({
+    metaKey: false,
+    ctrlKey: true,
+    altKey: false,
+    shiftKey: false,
+    code,
+    ...extra,
+  });
+  it("Ctrl+Shift+C 複製；Ctrl+C 只有在有選取時才複製，否則照常中斷", () => {
+    expect(editKey(key("KeyC", { shiftKey: true }), "windows")).toEqual({ type: "copy" });
+    expect(editKey(key("KeyC"), "windows", true)).toEqual({ type: "copy" });
+    expect(editKey(key("KeyC"), "windows", false)).toBeNull();
+  });
+  it("Ctrl+V、Ctrl+Shift+V 貼上，交給瀏覽器的 paste 事件", () => {
+    expect(editKey(key("KeyV"), "windows")).toEqual({ type: "paste" });
+    expect(editKey(key("KeyV", { shiftKey: true }), "windows")).toEqual({ type: "paste" });
+    let prevented = false;
+    const passThrough = handleEditKeyEvent(
+      {
+        ...key("KeyV"),
+        type: "keydown",
+        isComposing: false,
+        preventDefault: () => (prevented = true),
+      },
+      () => {},
+      false,
+      "windows",
+    );
+    expect(passThrough).toBe(false);
+    expect(prevented).toBe(false);
+  });
+  it("macOS 的 ⌘← 等在 Windows 不翻譯；⇧↩ 換行兩邊都有", () => {
+    expect(editKey(key("ArrowLeft", { ctrlKey: false, metaKey: true }), "windows")).toBeNull();
+    expect(editKey(key("ArrowLeft"), "windows")).toBeNull();
+    expect(editKey(key("Enter", { ctrlKey: false, shiftKey: true }), "windows")).toEqual({
+      type: "send",
+      data: "\x1b\r",
+    });
+  });
+  it("macOS 不把 Ctrl+V 當貼上", () => {
+    expect(editKey(key("KeyV"), "mac")).toBeNull();
   });
 });

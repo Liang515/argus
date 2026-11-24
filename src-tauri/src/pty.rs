@@ -1,4 +1,5 @@
-//! 每個分頁一個 PTY session：在專案目錄啟動 login shell，輸出經 Channel 串流回前端。
+//! 每個分頁一個 PTY session：在專案目錄啟動 shell（macOS：login shell；Windows：PowerShell），
+//! 輸出經 Channel 串流回前端。
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -64,14 +65,25 @@ fn child_env(
     parent: impl IntoIterator<Item = (String, String)>,
     extra: Vec<(String, String)>,
 ) -> Vec<(String, String)> {
+    // Windows 的環境變數名稱不分大小寫
+    let name = |k: &str| {
+        if cfg!(windows) {
+            k.to_ascii_uppercase()
+        } else {
+            k.to_string()
+        }
+    };
     let mut env: Vec<(String, String)> = parent
         .into_iter()
         .filter(|(k, _)| {
+            let k = name(k);
             !(k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_") || k.starts_with("ARGUS_"))
         })
-        .filter(|(k, _)| !matches!(k.as_str(), "TERM" | "COLORTERM" | "TERM_PROGRAM"))
+        .filter(|(k, _)| !matches!(name(k).as_str(), "TERM" | "COLORTERM" | "TERM_PROGRAM"))
         .collect();
-    if !env.iter().any(|(k, _)| k == "LANG") {
+    // macOS 的 GUI App 沒有 LANG，補上 UTF-8 才不會亂碼。Windows 不用 LANG 決定編碼，
+    // 補了反而會讓 git 等工具改用英文訊息
+    if !cfg!(windows) && !env.iter().any(|(k, _)| k == "LANG") {
         env.push(("LANG".into(), "en_US.UTF-8".into()));
     }
     env.push(("TERM".into(), "xterm-256color".into()));
@@ -110,14 +122,37 @@ fn argus_env(
     extra
 }
 
-fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> CommandBuilder {
+/// 分頁要啟動的 shell 與參數。
+#[cfg(not(windows))]
+fn shell() -> (String, &'static [&'static str]) {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    // login shell 會載入 .zprofile / .zshrc，GUI App 才拿得到使用者的 PATH。
+    (shell, &["-l"])
+}
+
+/// Windows：有裝 PowerShell 7（pwsh）就用它，否則用系統內建的 Windows PowerShell。
+#[cfg(windows)]
+fn shell() -> (String, &'static [&'static str]) {
+    let shell = crate::sys::find_in_path("pwsh")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "powershell.exe".into());
+    (shell, &["-NoLogo"])
+}
+
+fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> CommandBuilder {
+    let (shell, args) = shell();
     let extra = extra(&shell);
     let mut cmd = CommandBuilder::new(&shell);
-    // login shell 會載入 .zprofile / .zshrc，GUI App 才拿得到使用者的 PATH。
-    cmd.arg("-l");
+    cmd.args(args);
     cmd.env_clear();
     for (k, v) in child_env(std::env::vars().filter(|(k, _)| k != "ZDOTDIR"), extra) {
+        // Windows：PATH 換成最新的（見 sys::current_path），不用重開 Argus 就找得到剛裝的 agent
+        #[cfg(windows)]
+        let v = if k.eq_ignore_ascii_case("PATH") {
+            crate::sys::current_path()
+        } else {
+            v
+        };
         cmd.env(k, v);
     }
     let dir = if Path::new(cwd).is_dir() {
@@ -125,7 +160,7 @@ fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> Co
     } else {
         dirs::home_dir()
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "/".into())
+            .unwrap_or_else(|| if cfg!(windows) { r"C:\" } else { "/" }.into())
     };
     cmd.cwd(dir);
     cmd
@@ -151,7 +186,11 @@ pub fn pty_spawn(
             pixel_height: 0,
         })
         .map_err(|e| e.to_string())?;
+    // Windows（ConPTY）沒有終端機裝置路徑；hook 靠它回報狀態，所以 Windows 目前沒有燈號 hook
+    #[cfg(unix)]
     let tty = pair.master.tty_name();
+    #[cfg(not(unix))]
+    let tty: Option<std::path::PathBuf> = None;
     let command = build_command(&cwd, |shell| {
         argus_env(&id, tty.as_deref(), shell, state.integration.as_ref())
     });
@@ -273,11 +312,60 @@ pub fn pty_is_busy(state: State<'_, PtyManager>, id: String) -> Result<bool, Str
 }
 
 /// 前景行程群組不是 shell，就代表有程式（agent、npm run dev…）在跑。
+#[cfg(unix)]
 fn is_busy(session: &Session) -> bool {
     match (session.master.process_group_leader(), session.shell_pid) {
         (Some(fg), Some(shell)) => fg as u32 != shell,
         _ => false,
     }
+}
+
+/// Windows 沒有前景行程群組：shell 還活著、而且底下有子行程（agent、npm run dev…）就算在忙。
+/// 已知限制：從 PowerShell 直接開的 GUI 程式（例如 `notepad a.txt`）開著時也會算忙碌。
+#[cfg(windows)]
+fn is_busy(session: &Session) -> bool {
+    session.shell_pid.is_some_and(shell_has_child)
+}
+
+/// 一次快照同時確認 shell 本身還在：shell 結束後，Windows 不會改掉它留下的子行程的父行程編號，
+/// 只看「父行程是 pid」的話，已關閉的分頁會一直被當成在忙。
+#[cfg(windows)]
+fn shell_has_child(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+    // SAFETY：只讀取行程快照，handle 用完就關；PROCESSENTRY32W 依文件先設好 dwSize。
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return false;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut shell_alive = false;
+        let mut child = false;
+        let mut ok = Process32FirstW(snapshot, &mut entry) != 0;
+        while ok {
+            if entry.th32ProcessID == pid {
+                shell_alive = true;
+            } else if entry.th32ParentProcessID == pid && !is_console_host(&entry.szExeFile) {
+                child = true;
+            }
+            ok = Process32NextW(snapshot, &mut entry) != 0;
+        }
+        CloseHandle(snapshot);
+        shell_alive && child
+    }
+}
+
+/// conhost／OpenConsole 是 ConPTY 自己的輔助行程，不算使用者啟動的程式。
+#[cfg(windows)]
+fn is_console_host(exe: &[u16]) -> bool {
+    let len = exe.iter().position(|&c| c == 0).unwrap_or(exe.len());
+    let name = String::from_utf16_lossy(&exe[..len]);
+    name.eq_ignore_ascii_case("conhost.exe") || name.eq_ignore_ascii_case("OpenConsole.exe")
 }
 
 #[cfg(test)]
@@ -327,6 +415,8 @@ mod tests {
         assert_eq!(get(&env, "ARGUS_TAB_ID"), Some("tab1"));
     }
 
+    // Windows 不補 LANG（見 child_env）
+    #[cfg(unix)]
     #[test]
     fn lang_defaults_to_utf8_but_keeps_user_value() {
         let env = child_env(env_of(&[]), vec![]);
@@ -335,6 +425,7 @@ mod tests {
         assert_eq!(get(&env, "LANG"), Some("zh_TW.UTF-8"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn argus_env_wraps_zsh_only() {
         let integration = Integration {

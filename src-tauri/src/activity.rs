@@ -465,6 +465,8 @@ mod tests {
         assert_eq!(summarize("not json"), None);
     }
 
+    // 測試用的 /p/… 在 Windows 不是絕對路徑（Windows 的 hook 是第二階段）
+    #[cfg(unix)]
     #[test]
     fn agy_hooks_become_activity_events() {
         assert_eq!(
@@ -553,6 +555,8 @@ mod tests {
         assert_eq!(run(json!({"hookEventName": "SessionStart"})), None);
     }
 
+    // 測試用的 /p/… 在 Windows 不是絕對路徑（Windows 的 hook 是第二階段）
+    #[cfg(unix)]
     #[test]
     fn tools_become_short_actions() {
         let start = |tool: &str, input: Value| {

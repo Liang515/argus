@@ -6,6 +6,9 @@
 //! - `hooks.json`：給 `claude --settings` 用的 hooks 設定，只在 Argus 裡生效。
 //! - `zsh/`：ZDOTDIR 包裝，照常載入使用者原本的 zsh 設定，最後定義 `claude` 函式自動帶上 `--settings`。
 
+// Windows 版還沒有安裝這些整合檔（見 [`install`]），產生檔案的函式暫時用不到
+#![cfg_attr(windows, allow(dead_code))]
+
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -262,6 +265,15 @@ pub fn install_with_bin(dir: &Path, argus_bin: Option<&Path>) -> io::Result<Inte
     })
 }
 
+#[cfg(windows)]
+pub fn install() -> io::Result<Integration> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "Windows 版尚未支援狀態 hook",
+    ))
+}
+
+#[cfg(not(windows))]
 pub fn install() -> io::Result<Integration> {
     let home =
         dirs::home_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "找不到家目錄"))?;
@@ -274,7 +286,8 @@ pub fn install() -> io::Result<Integration> {
     install_with_bin(&home.join(".argus"), exe.as_deref())
 }
 
-#[cfg(test)]
+// hook 是 POSIX shell 腳本，Windows 版還沒有狀態整合（第二階段改用 argus.exe）
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use std::io::Read;

@@ -1,3 +1,5 @@
+import { platformText } from "./platform";
+
 /** 介面語言：依系統偏好語言的順序，先遇到中文就用繁體中文，先遇到英文或都沒有就用英文。 */
 export type Lang = "zh-TW" | "en";
 
@@ -55,6 +57,7 @@ const zh = {
   "side.tabChanges": "變更",
   "side.tabHandoff": "交接",
   "act.empty": "Claude 或 Antigravity 開始工作後，這裡會即時顯示計畫和每一步動作。",
+  "act.emptyWin": "Windows 版還不會顯示 agent 的計畫與每一步動作，下一版加入。",
   "act.plan": "計畫",
   "act.recent": "最近動作",
   "act.you": "你",
@@ -166,6 +169,7 @@ const zh = {
   "help.panels.themeKeys": "⌘K 搜尋「配色」",
   "help.panels.zoom": "放大／縮小終端機字體，⌘0 恢復預設",
   "help.panels.theme": "切換配色（Argus、Clear Dark、跟隨「終端機」）",
+  "help.panels.themeWin": "切換配色（Argus、Clear Dark）",
   "help.palette": "切換器裡",
   "help.palette.select": "選擇",
   "help.palette.open": "開啟",
@@ -176,6 +180,8 @@ const zh = {
   "help.typing.deleteLine": "刪除游標前的整行",
   "help.typing.selectAll": "全選終端機內容（可接著 ⌘C 複製）",
   "help.typing.newline": "在 Claude Code 輸入框換行（不送出）",
+  "help.typing.copy": "複製選取的文字（有選取時 Ctrl+C 也可以）",
+  "help.typing.paste": "貼上",
   "help.links": "連結",
   "help.links.openKeys": "⌘＋點擊路徑",
   "help.links.open": "開啟檔案：程式碼用 VS Code／Antigravity 並跳到行號，資料夾開在 Finder",
@@ -205,8 +211,10 @@ const zh = {
   "recap.buttonTitle": "近況：各專案最近做了什麼 (⌘J)",
   "recap.placeholder": "搜尋專案或做過的事",
   "recap.empty": "還沒有紀錄。agent 在專案裡動作後，這裡會列出最後一句指令和改過的檔案。",
+  "recap.emptyWin": "Windows 版還不會記錄 agent 的指令與改過的檔案，下一版加入。",
   "recap.noMatch": "沒有符合的專案",
   "recap.noPrompt": "（沒有記到指令）",
+  "recap.promptBy": "{agent}：",
   "recap.files": "改了 {count} 個檔：{names}",
   "recap.filesOne": "改了 1 個檔：{names}",
   "recap.uncommitted": "{count} 個未提交",
@@ -273,6 +281,8 @@ const en: Record<MessageKey, string> = {
   "side.tabHandoff": "Handoff",
   "act.empty":
     "Once Claude or Antigravity starts working, its plan and each step show up here as they happen.",
+  "act.emptyWin":
+    "The Windows version doesn't show the agent's plan and steps yet. Coming in the next release.",
   "act.plan": "Plan",
   "act.recent": "Recent",
   "act.you": "You",
@@ -388,6 +398,7 @@ const en: Record<MessageKey, string> = {
   "help.panels.themeKeys": "⌘K, search “theme”",
   "help.panels.zoom": "Bigger / smaller terminal text; ⌘0 resets",
   "help.panels.theme": "Change the color theme (Argus, Clear Dark, match Terminal)",
+  "help.panels.themeWin": "Change the color theme (Argus, Clear Dark)",
   "help.palette": "In the switcher",
   "help.palette.select": "Select",
   "help.palette.open": "Open",
@@ -398,6 +409,8 @@ const en: Record<MessageKey, string> = {
   "help.typing.deleteLine": "Delete to line start",
   "help.typing.selectAll": "Select the whole terminal (then ⌘C to copy)",
   "help.typing.newline": "New line in Claude Code's input without sending",
+  "help.typing.copy": "Copy the selection (Ctrl+C works too while text is selected)",
+  "help.typing.paste": "Paste",
   "help.links": "Links",
   "help.links.openKeys": "⌘-click a path",
   "help.links.open": "Open the file: code in VS Code / Antigravity at the line, folders in Finder",
@@ -428,8 +441,11 @@ const en: Record<MessageKey, string> = {
   "recap.placeholder": "Search projects or what you did",
   "recap.empty":
     "Nothing yet. Once an agent works in a project, its last prompt and edited files show up here.",
+  "recap.emptyWin":
+    "The Windows version doesn't record the agent's prompts and edited files yet. Coming in the next release.",
   "recap.noMatch": "No matching projects",
   "recap.noPrompt": "(no prompt recorded)",
+  "recap.promptBy": "{agent}: ",
   "recap.files": "{count} files edited: {names}",
   "recap.filesOne": "1 file edited: {names}",
   "recap.uncommitted": "{count} uncommitted",
@@ -500,9 +516,17 @@ export function translate(
   return format(MESSAGES[language][key], vars);
 }
 
-/** 目前語言的文字；`{name}` 換成 vars 裡的值。 */
+/** 介面上直接寫的按鍵或 App 名稱（例如 "⌘B"、"Finder"），換成目前平台的說法。 */
+export function keys(text: string): string {
+  return platformText(text, lang);
+}
+
+/**
+ * 目前語言的文字；`{name}` 換成 vars 裡的值。
+ * Windows 上把 ⌘ 按鍵與 Finder 換成對應的說法（見 platform.ts）。
+ */
 export function t(key: MessageKey, vars?: Record<string, string | number>): string {
-  return translate(lang, key, vars);
+  return platformText(translate(lang, key, vars), lang);
 }
 
 /**

@@ -65,6 +65,44 @@ describe("noteActivity", () => {
   });
 });
 
+describe("noteActivity 記下是哪個 agent", () => {
+  it("指令記下收到它的 agent；之後別的 agent 有動作只改最近的 agent", () => {
+    let r = noteActivity([], "/a", { k: "prompt", text: "刪掉它" }, 1, "agy");
+    expect(r[0]).toMatchObject({ prompt: "刪掉它", promptAgent: "agy", agent: "agy" });
+    r = noteStatus(r, "/a", "running", "claude", 2);
+    r = noteActivity(r, "/a", { k: "start", verb: "read", target: "x" }, 3, "claude");
+    expect(r[0]).toMatchObject({ prompt: "刪掉它", promptAgent: "agy", agent: "claude" });
+    r = noteActivity(r, "/a", { k: "prompt", text: "新的" }, 4, "claude");
+    expect(r[0]).toMatchObject({ prompt: "新的", promptAgent: "claude" });
+  });
+  it("不同 agent 說了同一句不算同一輪重送：換成新的 agent、清掉上一輪的檔案", () => {
+    let r = noteActivity([], "/a", { k: "prompt", text: "好" }, 1, "claude");
+    r = noteActivity(
+      r,
+      "/a",
+      { k: "start", verb: "edit", target: "a", path: "/a/a.ts" },
+      2,
+      "claude",
+    );
+    r = noteActivity(r, "/a", { k: "prompt", text: "好", dedup: true }, 3, "agy");
+    expect(r[0]).toMatchObject({ prompt: "好", promptAgent: "agy", files: [] });
+  });
+  it("新指令不知道是哪個 agent 時，不沿用上一句的 promptAgent", () => {
+    let r = noteActivity([], "/a", { k: "prompt", text: "一" }, 1, "agy");
+    r = noteActivity(r, "/a", { k: "prompt", text: "二" }, 2);
+    expect(r[0].promptAgent).toBeUndefined();
+  });
+  it("存檔讀回來也保留 promptAgent，不認得的值略過", () => {
+    const json = JSON.stringify([
+      { path: "/a", at: 1, files: [], prompt: "x", promptAgent: "agy" },
+      { path: "/b", at: 0, files: [], prompt: "y", promptAgent: "nope" },
+    ]);
+    const [a, b] = parseRecaps(json);
+    expect(a.promptAgent).toBe("agy");
+    expect(b.promptAgent).toBeUndefined();
+  });
+});
+
 describe("noteStatus", () => {
   it("執行、等確認、完成都更新時間並記 agent；off、idle 不動", () => {
     const r = noteStatus([], "/a", "running", "codex", 7);

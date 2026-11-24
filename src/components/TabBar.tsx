@@ -1,10 +1,11 @@
 import { ArrowUpCircle, ChevronDown, GitBranch, History, Keyboard, Plus, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import type { CustomAgent } from "../lib/customAgents";
-import { t } from "../lib/i18n";
+import { keys, t } from "../lib/i18n";
+import { isMac } from "../lib/platform";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
-import { dropIndex, hiddenTabIds, overflowAlerts, type Tab } from "../lib/tabs";
+import { dropIndex, hiddenTabIds, overflowAlerts, scrollDelta, type Tab } from "../lib/tabs";
 import { AgentButtons } from "./AgentButtons";
 
 const DOT_CLASS: Record<Exclude<ClaudeStatus, "off">, string> = {
@@ -93,8 +94,11 @@ export function TabBar({
   onUpdate,
 }: Props) {
   const activeStatus = activeId ? (statuses[activeId] ?? "off") : "off";
+  const activeIndex = activeId ? tabs.findIndex((t) => t.id === activeId) : -1;
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState<string[]>([]);
+  const hiddenRef = useRef<string[]>([]);
+  const realignsLeft = useRef(0);
 
   // 拖曳排序：用 pointer 事件自己處理（Tauri 在 macOS 會攔截 HTML5 拖放）
   const tabEls = useRef(new Map<string, HTMLDivElement>());
@@ -127,19 +131,31 @@ export function TabBar({
       ),
     );
   };
-  // 分頁放不下時，記下哪些不在畫面上，給「全部分頁」按鈕用
-  const measure = useCallback(() => {
+  // 分頁放不下時，記下哪些不在畫面上，給「全部分頁」按鈕用；回傳清單是否有變動
+  const measure = useCallback((): boolean => {
     const scroller = scrollerRef.current;
-    if (!scroller) return;
+    if (!scroller) return false;
     const view = scroller.getBoundingClientRect();
     // 版面還沒排好（寬度 0）時量不準，等下一次尺寸變化再量
-    if (view.width === 0) return;
+    if (view.width === 0) return false;
     const rects = [...tabEls.current].map(([id, el]) => {
       const r = el.getBoundingClientRect();
       return { id, left: r.left, right: r.right };
     });
     const next = hiddenTabIds(view, rects);
-    setHidden((prev) => (prev.join() === next.join() ? prev : next));
+    if (hiddenRef.current.join() === next.join()) return false;
+    hiddenRef.current = next;
+    setHidden(next);
+    return true;
+  }, []);
+
+  /** 把目前分頁完整捲進分頁列可見範圍（含最右邊的 ×）。 */
+  const revealActive = useCallback((id: string | null) => {
+    const scroller = scrollerRef.current;
+    const el = id ? tabEls.current.get(id) : undefined;
+    if (!scroller || !el) return;
+    const delta = scrollDelta(scroller.getBoundingClientRect(), el.getBoundingClientRect());
+    if (delta !== 0) scroller.scrollLeft += delta;
   }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: 分頁或名稱變動時重新量
@@ -158,11 +174,22 @@ export function TabBar({
     };
   }, [measure, tabs, labels, branches]);
 
-  // 切到看不到的分頁（⌘數字、⌘K、選單）時捲過去
-  useEffect(() => {
-    if (!activeId) return;
-    tabEls.current.get(activeId)?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [activeId]);
+  // 切到或移到看不到的分頁（⌘⇧[ ]、⌘⇧← →、⌘數字、⌘K、選單）時捲過去；
+  // 若捲動讓「全部分頁」按鈕改變寬度、擠窄分頁區，下一輪 render 再對齊一次，避免把 × 切掉。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 分頁位置改變（⌘⇧← →）也要跟著捲
+  useLayoutEffect(() => {
+    if (!activeId || draggingId) return;
+    revealActive(activeId);
+    realignsLeft.current = measure() ? 2 : 0;
+  }, [activeId, activeIndex, draggingId, revealActive, measure]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hidden 變動會改變 TabsMenu 寬度
+  useLayoutEffect(() => {
+    if (!activeId || realignsLeft.current <= 0) return;
+    realignsLeft.current -= 1;
+    revealActive(activeId);
+    if (!measure()) realignsLeft.current = 0;
+  }, [hidden, activeId, revealActive, measure]);
 
   const onPointerUp = (e: React.PointerEvent, id: string) => {
     const d = drag.current;
@@ -177,7 +204,7 @@ export function TabBar({
   return (
     <header
       data-tauri-drag-region
-      className={`flex h-10 shrink-0 items-center gap-1 border-b border-deck-border bg-deck-panel pr-2 ${fullscreen ? "pl-2" : "pl-[84px]"}`}
+      className={`flex h-10 shrink-0 items-center gap-1 border-b border-deck-border bg-deck-panel pr-2 ${fullscreen || !isMac ? "pl-2" : "pl-[84px]"}`}
     >
       {/* 分頁不壓縮（名稱要看得清楚），放不下就捲動，或用右邊的「全部分頁」選單 */}
       <div
@@ -200,7 +227,7 @@ export function TabBar({
                   ? "bg-deck-hover text-deck-text shadow-[inset_0_0_0_1px_var(--color-deck-border)]"
                   : "text-deck-muted hover:bg-deck-hover/60 hover:text-deck-text"
               }`}
-              title={`${tab.path}${i < 9 ? `  (⌘${i + 1})` : ""}\n${t("tab.dragHint")}`}
+              title={`${tab.path}${i < 9 ? `  (${keys(`⌘${i + 1}`)})` : ""}\n${t("tab.dragHint")}`}
             >
               <button
                 type="button"
@@ -404,7 +431,7 @@ function TabsMenu({
                 {branch && (
                   <span className="max-w-24 truncate text-[11px] text-deck-muted">{branch}</span>
                 )}
-                {i < 9 && <kbd className="text-[11px] text-deck-muted">⌘{i + 1}</kbd>}
+                {i < 9 && <kbd className="text-[11px] text-deck-muted">{keys(`⌘${i + 1}`)}</kbd>}
               </button>
             );
           })}

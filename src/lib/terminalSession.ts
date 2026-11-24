@@ -1,4 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
@@ -7,10 +8,12 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { type ILink, type ITheme, Terminal } from "@xterm/xterm";
 import { type ActivityEvent, parseActivity } from "./activity";
 import type { AgentId } from "./agents";
+import { parseOsc52 } from "./clipboard";
 import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
 import { DEFAULT_FONT_SIZE } from "./fontSize";
 import { t } from "./i18n";
+import { isMac } from "./platform";
 import { openPath } from "./project";
 import {
   backgroundSessionId,
@@ -37,6 +40,11 @@ const ACTIVITY_TAG = "argus-activity;";
 
 /** 新開的分頁用目前選的配色（App 啟動與切換配色時更新）。 */
 let currentTheme: ITheme = BUILT_IN.argus.terminal;
+
+/** 連結要按住 ⌘（Windows：Ctrl）再點才開，一般點擊留給選取文字。 */
+function linkModifier(event: MouseEvent): boolean {
+  return isMac ? event.metaKey : event.ctrlKey;
+}
 
 export function setDefaultTerminalTheme(theme: ITheme) {
   currentTheme = theme;
@@ -84,7 +92,12 @@ export class TerminalSession {
     readonly id: string,
     readonly cwd: string,
     private readonly onStatus: (id: string, status: ClaudeStatus, agent: AgentId) => void,
-    private readonly onActivity: (id: string, event: ActivityEvent) => void = () => {},
+    /** agent：送出這筆活動的 agent（hook 先送燈號再送活動，收到時已經知道是誰） */
+    private readonly onActivity: (
+      id: string,
+      event: ActivityEvent,
+      agent: AgentId,
+    ) => void = () => {},
   ) {
     this.element.style.height = "100%";
     this.term = new Terminal({
@@ -102,7 +115,7 @@ export class TerminalSession {
     // 網址和檔案路徑一樣要 ⌘＋點擊才開，一般點擊留給選取文字；只開 http(s)
     this.term.loadAddon(
       new WebLinksAddon((event, uri) => {
-        if (event.metaKey && /^https?:\/\//i.test(uri)) void openUrl(uri);
+        if (linkModifier(event) && /^https?:\/\//i.test(uri)) void openUrl(uri);
       }),
     );
     // 寬度要和 agent（string-width）及 macOS「終端機」一致：⚠️ 這類「符號＋表情變體」算 2 格。
@@ -115,7 +128,7 @@ export class TerminalSession {
       // 側欄「活動」的摘要（hook 和燈號一起送）
       if (data.startsWith(ACTIVITY_TAG)) {
         const event = parseActivity(data.slice(ACTIVITY_TAG.length));
-        if (event) this.onActivity(this.id, event);
+        if (event) this.onActivity(this.id, event, this.agent);
         return true;
       }
       const parsed = parseArgusOsc(data);
@@ -128,14 +141,30 @@ export class TerminalSession {
       return true;
     });
 
+    // 終端機裡的程式（例如 Claude Code 選取文字後）請我們寫入剪貼簿；只寫不讀，見 clipboard.ts
+    this.term.parser.registerOscHandler(52, (data) => {
+      const text = parseOsc52(data);
+      if (text !== null) void writeText(text).catch(() => {});
+      return true;
+    });
+
     this.term.attachCustomKeyEventHandler((e) => {
       // App 快捷鍵不送進 shell，交給 window 上的監聽處理
       if (shortcutAction(e)) return false;
       // ⌘← ⌘→ ⇧↩ 等編輯鍵：keydown 時送對應按鍵，其他事件也攔下，避免重複輸入
-      const passThrough = handleEditKeyEvent(e, (edit) => {
-        if (edit.type === "select-all") this.term.selectAll();
-        else if (this.running) this.send(edit.data);
-      });
+      const passThrough = handleEditKeyEvent(
+        e,
+        (edit) => {
+          if (edit.type === "select-all") this.term.selectAll();
+          else if (edit.type === "copy") {
+            const text = this.term.getSelection();
+            // 直接寫系統剪貼簿：WebView2 的 navigator.clipboard 不一定允許
+            if (text) void writeText(text).catch(() => {});
+            this.term.clearSelection();
+          } else if (edit.type === "send" && this.running) this.send(edit.data);
+        },
+        this.term.hasSelection(),
+      );
       if (!passThrough) return false;
       return true;
     });
@@ -297,7 +326,7 @@ export class TerminalSession {
         text: text.slice(c.start, c.end),
         decorations: { underline: true, pointerCursor: true },
         activate: (event) => {
-          if (!event.metaKey) return;
+          if (!linkModifier(event)) return;
           void openPath(target.path, event.altKey, c.line, c.column).catch(() => {});
         },
       });

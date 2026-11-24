@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// 比這大的檔案不讀，正常只有幾行。
 const MAX_FILE: u64 = 64 * 1024;
@@ -63,11 +62,19 @@ pub fn edit_custom_agents(lang: Option<String>) -> Result<(), String> {
     let path = file().ok_or("open_failed")?;
     ensure_template(&path, lang.as_deref().unwrap_or("en"))
         .map_err(|e| format!("write_custom_agents: {e}"))?;
-    let ok = Command::new("/usr/bin/open")
-        .arg("-t")
-        .arg(&path)
-        .status()
-        .is_ok_and(|s| s.success());
+    // macOS：預設文字編輯器（-t）；Windows：記事本（.json 可能沒有預設 App，或被設成瀏覽器）
+    let ok = if cfg!(target_os = "macos") {
+        crate::sys::command("/usr/bin/open")
+            .arg("-t")
+            .arg(&path)
+            .status()
+            .is_ok_and(|s| s.success())
+    } else {
+        crate::sys::command("notepad.exe")
+            .arg(&path)
+            .spawn()
+            .is_ok()
+    };
     if ok {
         Ok(())
     } else {

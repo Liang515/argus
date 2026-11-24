@@ -2,7 +2,7 @@
 
 [繁體中文](README.zh-TW.md)
 
-A terminal workspace for coding agents on macOS. Keep every project in its own tab, run Claude Code, Antigravity CLI (`agy`) or Codex in it, and see at a glance which agent is working, which one is waiting for you, and which one is done.
+A terminal workspace for coding agents on macOS (and, in preview, Windows). Keep every project in its own tab, run Claude Code, Antigravity CLI (`agy`) or Codex in it, and see at a glance which agent is working, which one is waiting for you, and which one is done.
 
 ![Argus demo showing tab status lights, live Git changes, HANDOFF.md sidebar, agent launcher, and quick switcher](docs/demo.gif)
 
@@ -64,10 +64,18 @@ brew trust --tap liang515/tap   # only needed once
 brew install --cask liang515/tap/argus
 ```
 
+### Windows (preview)
+
+Download the latest `Argus_*_x64-setup.exe` from [Releases](https://github.com/Liang515/argus/releases) and run it. The installer isn't code-signed yet, so Windows may say "Windows protected your PC": click **More info** → **Run anyway**.
+
+The Windows version runs PowerShell (PowerShell 7 if installed) in each tab and uses Ctrl+Shift shortcuts like Windows Terminal: Ctrl+Shift+T new tab, Ctrl+Shift+K switcher, Ctrl+Shift+J recent work, Ctrl+Tab next tab, Ctrl+1–9 jump to a tab, Ctrl+Shift+C / Ctrl+V copy and paste, Ctrl+click to open a path. Press Ctrl+Shift+/ for all of them.
+
+Not on Windows yet: the running and done status lights, the Activity panel and the prompts and files in Recent work (they need the agent hooks, coming next). The "waiting for you" light works from screen text, and the "match Terminal" theme is macOS only.
+
 Requirements:
 
-- macOS on Apple Silicon or Intel.
-- zsh as your shell (the macOS default) for the status lights.
+- macOS on Apple Silicon or Intel, or Windows 10/11 (x64; Arm64 runs it through emulation).
+- On macOS, zsh as your shell (the default) for the status lights.
 - At least one agent: [Claude Code](https://code.claude.com/docs/en/setup), [Antigravity CLI](https://antigravity.google/docs/cli/install) or [Codex](https://developers.openai.com/codex/cli/). Argus shows install links for the ones you don't have and picks them up as soon as they are installed.
 
 ## What Argus writes on your machine
@@ -79,14 +87,16 @@ Argus never edits your own shell or agent settings. It writes only:
 - `CLAUDE.md` in a project, only when you click "add handoff rules" in the sidebar.
 - A sibling folder `<project>-wt-N`, only when you open a tab as a new Git worktree.
 
+On Windows, Argus only writes `%USERPROFILE%\.argus\` (saved tabs, recent work and custom agents); there is no status hook yet.
+
 ## Build from source
 
-Requires Node.js 20+, Rust (stable) and the Xcode Command Line Tools.
+Requires Node.js 20+, Rust (stable) and the Xcode Command Line Tools (on Windows: the Visual Studio C++ Build Tools and WebView2, see [Tauri's prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
 ```sh
 npm ci
 npm run tauri dev     # run in development
-npm run tauri build   # build Argus.app and a .dmg
+npm run tauri build   # macOS: Argus.app and a .dmg; Windows: an NSIS installer
 ```
 
 Builds are ad-hoc signed by default. To sign with your own certificate, set `APPLE_SIGNING_IDENTITY` before building. Update packages (`.app.tar.gz` and its signature) are only produced by the release workflow, so you don't need a signing key to build.

@@ -1,6 +1,6 @@
 name: Release
 
-# 推 v* 標籤（例如 v0.1.0）時，build 支援 Apple Silicon 與 Intel 的 .dmg，建立 draft release。
+# 推 v* 標籤（例如 v0.1.0）時，build 支援 Apple Silicon 與 Intel 的 .dmg 與 Windows 安裝檔，建立 draft release。
 # 在 GitHub 的機器上 build，安裝檔裡不會有開發者電腦的路徑。
 # 有設定 Apple 憑證的 secrets 時用 Developer ID 簽名並送 Apple 公證（使用者不必「強制打開」）；
 # 沒有設定（例如 fork）時退回 ad-hoc 簽名。
@@ -15,6 +15,8 @@ permissions:
 jobs:
   macos:
     runs-on: macos-latest
+    outputs:
+      releaseId: ${{ steps.tauri.outputs.releaseId }}
     env:
       # secrets 不能直接用在 if 條件，先轉成旗標
       HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
@@ -37,6 +39,7 @@ jobs:
       - run: npm ci
 
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -55,8 +58,11 @@ jobs:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
           releaseName: Argus ${{ github.ref_name }}
           releaseBody: |
-            下載 `.dmg`，把 Argus 拖進「應用程式」即可。
-            Download the `.dmg` and drag Argus into Applications.
+            macOS：下載 `.dmg`，把 Argus 拖進「應用程式」即可。
+            Windows：下載 `_x64-setup.exe` 執行。安裝檔目前沒有程式碼簽章，若出現「Windows 已保護您的電腦」，請按「其他資訊」→「仍要執行」。
+
+            macOS: download the `.dmg` and drag Argus into Applications.
+            Windows: download and run the `_x64-setup.exe`. The installer isn't code-signed yet; if SmartScreen says "Windows protected your PC", click "More info" → "Run anyway".
           releaseDraft: true
 
       # 有設 Apple 憑證卻沒簽好或沒公證（例如密碼過期）時讓這次 release 失敗，
@@ -73,3 +79,42 @@ jobs:
         with:
           name: Argus-macos-universal
           path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+
+  # Windows 安裝檔（NSIS）。目前沒有程式碼簽章：第一次執行會出現 SmartScreen 警告。
+  # 等 macOS 建好草稿再上傳到同一個 release，latest.json 會合併成兩個平台。
+  windows:
+    needs: macos
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          args: --config src-tauri/tauri.release.conf.json
+          releaseId: ${{ needs.macos.outputs.releaseId }}
+          # 和 macOS job 一致，latest.json 裡的下載網址才會用正式的標籤路徑
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseDraft: true
+          updaterJsonPreferNsis: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Argus-windows-x64
+          path: src-tauri/target/release/bundle/nsis/*.exe

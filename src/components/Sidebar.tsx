@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ActivityState } from "../lib/activity";
-import { lang, type MessageKey, t, translateError } from "../lib/i18n";
+import { keys, lang, type MessageKey, t, translateError } from "../lib/i18n";
 import {
   changeBadge,
   EDITOR_DOWNLOAD,
@@ -140,12 +140,12 @@ export function Sidebar({ tab, status, editors, editor, onPickEditor, activity, 
         <EditorButton path={path} editors={editors} editor={editor} onPick={onPickEditor} />
         <button
           type="button"
-          onClick={() => void openIn(path, "finder", "Finder")}
-          title={t("side.openWith", { app: "Finder" })}
+          onClick={() => void openIn(path, "finder", keys("Finder"))}
+          title={t("side.openWith", { app: keys("Finder") })}
           className="flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-deck-muted hover:bg-deck-hover hover:text-deck-text"
         >
           <FolderOpen size={14} />
-          Finder
+          {keys("Finder")}
         </button>
       </section>
 

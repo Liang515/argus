@@ -2,9 +2,9 @@ import { Clock, CornerDownLeft, FolderOpen, FolderSearch, GitBranch, Zap } from 
 import { useMemo, useState } from "react";
 import type { AgentId } from "../lib/agents";
 import { rank } from "../lib/fuzzy";
-import { t } from "../lib/i18n";
+import { keys, t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
-import { type Tab, tabName } from "../lib/tabs";
+import { shortPath, type Tab, tabName } from "../lib/tabs";
 
 type Item =
   | { kind: "tab"; tab: Tab; index: number }
@@ -43,8 +43,9 @@ const STATUS_COLOR: Partial<Record<ClaudeStatus, string>> = {
   done: "text-status-done",
 };
 
-const shortPath = (path: string) => path.replace(/^\/Users\/[^/]+/, "~");
-const looksLikePath = (q: string) => q.startsWith("/") || q.startsWith("~");
+// Windows 路徑以磁碟代號開頭（C:\ 或 C:/）
+const looksLikePath = (q: string) =>
+  q.startsWith("/") || q.startsWith("~") || /^[A-Za-z]:[\\/]/.test(q);
 
 export function CommandPalette({
   tabs,
@@ -209,7 +210,7 @@ function ItemRow({
       <>
         <FolderSearch size={15} className="shrink-0" />
         <span className="flex-1">{t("palette.browse")}</span>
-        <kbd className="text-[11px]">⌘T</kbd>
+        <kbd className="text-[11px]">{keys("⌘T")}</kbd>
       </>
     );
   }

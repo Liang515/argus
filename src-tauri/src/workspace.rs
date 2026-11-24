@@ -97,7 +97,7 @@ pub fn resolve_dir_in(input: &str, home: &Path) -> Option<PathBuf> {
     let input = input.trim();
     let path = if input == "~" {
         home.to_path_buf()
-    } else if let Some(rest) = input.strip_prefix("~/") {
+    } else if let Some(rest) = crate::paths::strip_home(input) {
         home.join(rest)
     } else {
         PathBuf::from(input)
@@ -105,7 +105,7 @@ pub fn resolve_dir_in(input: &str, home: &Path) -> Option<PathBuf> {
     if !path.is_absolute() {
         return None;
     }
-    let path = path.canonicalize().ok()?;
+    let path = crate::sys::canonicalize(path).ok()?;
     path.is_dir().then_some(path)
 }
 
@@ -181,6 +181,7 @@ mod tests {
         assert!(raw.contains("activeId"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn resolves_tilde_and_rejects_files_and_relative() {
         let home = tempfile::tempdir().unwrap();

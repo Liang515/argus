@@ -1,3 +1,5 @@
+import { type Platform, platform } from "./platform";
+
 /** 終端機一行文字裡看起來像檔案路徑的片段（還沒確認存在）。 */
 export interface PathCandidate {
   /** 在這行文字裡的起訖位置（end 不含） */
@@ -17,16 +19,23 @@ const TRAILING = /[.:!?…]+$/;
 const LINE_SUFFIX = /:(\d+)(?::(\d+))?$/;
 const HAS_EXTENSION = /\.[A-Za-z][A-Za-z0-9]{0,9}$/;
 
-function looksLikePath(token: string): boolean {
+function looksLikePath(token: string, target: Platform): boolean {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(token)) return false; // 網址交給 WebLinksAddon
+  // 網路路徑（\\server\share、//server/share）：光是查詢存不存在，Windows 就會連到那台主機
+  if (/^[\\/]{2}/.test(token)) return false;
   if (token === "~" || token.startsWith("~/")) return true;
   if (/^\.{1,2}\//.test(token)) return true;
+  if (target === "windows") {
+    // C:\a\b、C:/a/b、~\a、.\a，或 src\a.ts 這種反斜線分隔的相對路徑
+    if (/^[A-Za-z]:[\\/]/.test(token) || /^(~|\.{1,2})\\/.test(token)) return true;
+    if (token.includes("\\")) return /[A-Za-z0-9一-鿿]/.test(token);
+  }
   if (token.includes("/")) return /[A-Za-z0-9一-鿿]/.test(token);
   return HAS_EXTENSION.test(token) && /^[\w@+\-.一-鿿]+$/.test(token);
 }
 
 /** 找出一行裡的候選路徑，例如 `src/App.tsx:313`、`~/Desktop/x`、`README.md`。 */
-export function findPathCandidates(text: string): PathCandidate[] {
+export function findPathCandidates(text: string, target: Platform = platform): PathCandidate[] {
   const found: PathCandidate[] = [];
   let i = 0;
   while (i < text.length) {
@@ -37,7 +46,7 @@ export function findPathCandidates(text: string): PathCandidate[] {
     const end = start + token.length;
     const suffix = LINE_SUFFIX.exec(token);
     if (suffix) token = token.slice(0, suffix.index);
-    if (token && looksLikePath(token)) {
+    if (token && looksLikePath(token, target)) {
       found.push({
         start,
         end,

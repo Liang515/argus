@@ -11,6 +11,8 @@ export interface ProjectRecap {
   at: number;
   /** 最後一句使用者指令 */
   prompt?: string;
+  /** 收到這句指令的 agent（同一個專案可能同時開著 Claude 和 agy） */
+  promptAgent?: AgentId;
   /** 最後一句指令之後修改／寫入的檔案（新的在前） */
   files: string[];
   /** 最後用的 agent */
@@ -34,33 +36,41 @@ function upsert(
   return [next, ...recaps.filter((r) => r.path !== path)].slice(0, MAX_PROJECTS);
 }
 
-/** 記下 hook 傳來的活動。讀取、搜尋這類不改東西的動作也算「有動作」。 */
+/** 記下 hook 傳來的活動。讀取、搜尋這類不改東西的動作也算「有動作」。agent 是送出活動的 agent。 */
 export function noteActivity(
   recaps: ProjectRecap[],
   path: string,
   event: ActivityEvent,
   now: number,
+  agent?: AgentId,
 ): ProjectRecap[] {
+  const withAgent = (r: ProjectRecap): ProjectRecap => (agent ? { ...r, agent } : r);
   if (event.k === "prompt") {
     const text = event.text.trim().slice(0, MAX_PROMPT);
     if (!text) return recaps;
-    // agy 同一輪會重送同一句，不要把這輪改過的檔案清掉
-    return upsert(recaps, path, now, (r) =>
-      r.prompt === text && event.dedup ? r : { ...r, prompt: text, files: [] },
-    );
+    return upsert(recaps, path, now, (r) => {
+      // agy 同一輪會重送同一句，不要把這輪改過的檔案清掉；別的 agent 剛好說了同一句（例如「好」）不算
+      const sameTurn = event.dedup && r.prompt === text && (!agent || r.promptAgent === agent);
+      if (sameTurn) return withAgent(r);
+      // 新的一輪：不知道是誰收到時，不沿用上一句的 promptAgent
+      const { promptAgent: _previous, ...rest } = r;
+      return withAgent({ ...rest, prompt: text, files: [], ...(agent && { promptAgent: agent }) });
+    });
   }
   // 一步到位的 done 失敗了就沒改到檔案（start 還不知道結果，先記）
   const failed = event.k === "done" && !event.ok;
   if ((event.k === "start" || event.k === "done") && event.path && !failed) {
     const file = event.path;
     if (event.verb === "edit" || event.verb === "write") {
-      return upsert(recaps, path, now, (r) => ({
-        ...r,
-        files: [file, ...r.files.filter((f) => f !== file)].slice(0, MAX_FILES),
-      }));
+      return upsert(recaps, path, now, (r) =>
+        withAgent({
+          ...r,
+          files: [file, ...r.files.filter((f) => f !== file)].slice(0, MAX_FILES),
+        }),
+      );
     }
   }
-  if (event.k === "start" || event.k === "done") return upsert(recaps, path, now, (r) => r);
+  if (event.k === "start" || event.k === "done") return upsert(recaps, path, now, withAgent);
   return recaps;
 }
 
@@ -89,6 +99,7 @@ export function mergeRecaps(saved: ProjectRecap[], live: ProjectRecap[]): Projec
     return {
       ...r,
       ...(old.prompt !== undefined && { prompt: old.prompt }),
+      ...(old.promptAgent && { promptAgent: old.promptAgent }),
       files: files.slice(0, MAX_FILES),
       ...((r.agent ?? old.agent) && { agent: r.agent ?? old.agent }),
     };
@@ -121,6 +132,7 @@ export function parseRecaps(json: string | null): ProjectRecap[] {
           ? r.files.filter((f: unknown): f is string => typeof f === "string").slice(0, MAX_FILES)
           : [],
         ...(isAgentId(r.agent) && { agent: r.agent }),
+        ...(isAgentId(r.promptAgent) && { promptAgent: r.promptAgent }),
       }))
       .sort((a, b) => b.at - a.at)
       .slice(0, MAX_PROJECTS);

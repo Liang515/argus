@@ -1,0 +1,6 @@
+# Windows 的 CI 用 LF 取出，Biome 與 rustfmt 的格式檢查才會一致
+* text=auto eol=lf
+*.png binary
+*.icns binary
+*.ico binary
+*.gif binary

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   activeAfterClose,
   dropIndex,
@@ -6,11 +6,20 @@ import {
   moveTab,
   overflowAlerts,
   resolveSelect,
+  scrollDelta,
   shortcutAction,
+  shortPath,
   type Tab,
   tabLabels,
   tabName,
 } from "./tabs";
+
+// 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
+vi.mock("./platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./platform")>()),
+  platform: "mac",
+  isMac: true,
+}));
 
 const key = (k: string, extra: Partial<KeyboardEvent> = {}) => ({
   metaKey: true,
@@ -168,6 +177,16 @@ describe("hiddenTabIds", () => {
   });
 });
 
+describe("scrollDelta", () => {
+  const view = { left: 100, right: 500 };
+  it("完全在可見區內不捲動；左邊或右邊超出時補齊整數像素", () => {
+    expect(scrollDelta(view, { left: 100, right: 220 })).toBe(0);
+    expect(scrollDelta(view, { left: 380, right: 500 })).toBe(0);
+    expect(scrollDelta(view, { left: 440, right: 520.3 })).toBe(21);
+    expect(scrollDelta(view, { left: 89.4, right: 210 })).toBe(-11);
+  });
+});
+
 describe("overflowAlerts", () => {
   it("列出所有出現的狀態，依等你確認、已完成、執行中排序", () => {
     expect(overflowAlerts(["running", "done", "needs-input"])).toEqual([
@@ -193,5 +212,63 @@ describe("字體縮放快捷鍵", () => {
     });
     expect(shortcutAction(key("-", { code: "Minus" }))).toEqual({ type: "zoom", delta: -1 });
     expect(shortcutAction(key("0", { code: "Digit0" }))).toEqual({ type: "zoom", delta: 0 });
+  });
+});
+
+describe("Windows 路徑", () => {
+  it("分頁標題取最後一段，反斜線也算", () => {
+    expect(tabName("C:\\Users\\me\\argus")).toBe("argus");
+    expect(tabName("C:\\Users\\me\\argus\\")).toBe("argus");
+  });
+  it("家目錄縮寫成 ~", () => {
+    expect(shortPath("C:\\Users\\me\\argus")).toBe("~\\argus");
+    expect(shortPath("/Users/me/argus")).toBe("~/argus");
+    expect(shortPath("D:\\work")).toBe("D:\\work");
+  });
+});
+
+describe("Windows 快捷鍵（Ctrl+Shift，同 Windows Terminal）", () => {
+  const win = (code: string, extra: Partial<KeyboardEvent> = {}) =>
+    shortcutAction(
+      { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: "", code, ...extra },
+      "windows",
+    );
+  it("字母要 Ctrl+Shift", () => {
+    expect(win("KeyT")).toEqual({ type: "new" });
+    expect(win("KeyD")).toEqual({ type: "duplicate" });
+    expect(win("KeyW")).toEqual({ type: "close" });
+    expect(win("KeyK")).toEqual({ type: "palette" });
+    expect(win("KeyP")).toEqual({ type: "palette" });
+    expect(win("KeyJ")).toEqual({ type: "recap" });
+    expect(win("KeyB")).toEqual({ type: "sidebar" });
+    expect(win("Slash")).toEqual({ type: "help" });
+    expect(win("PageUp")).toEqual({ type: "move", delta: -1 });
+    expect(win("PageDown")).toEqual({ type: "move", delta: 1 });
+  });
+  it("單純 Ctrl+字母留給終端機（Ctrl+C、Ctrl+K、Ctrl+W）", () => {
+    for (const code of ["KeyC", "KeyK", "KeyW", "KeyT", "KeyJ"]) {
+      expect(win(code, { shiftKey: false })).toBeNull();
+    }
+    expect(win("KeyC")).toBeNull();
+  });
+  it("Ctrl+Tab 切換、Ctrl+數字跳分頁、Ctrl+= − 0 縮放", () => {
+    expect(win("Tab", { shiftKey: false })).toEqual({ type: "next" });
+    expect(win("Tab")).toEqual({ type: "prev" });
+    expect(win("Digit2", { shiftKey: false })).toEqual({ type: "select", index: 1 });
+    expect(win("Digit9", { shiftKey: false })).toEqual({ type: "select", index: -1 });
+    expect(win("Equal", { shiftKey: false })).toEqual({ type: "zoom", delta: 1 });
+    expect(win("Minus", { shiftKey: false })).toEqual({ type: "zoom", delta: -1 });
+    expect(win("Digit0", { shiftKey: false })).toEqual({ type: "zoom", delta: 0 });
+    expect(win("NumpadAdd", { shiftKey: false })).toEqual({ type: "zoom", delta: 1 });
+    expect(win("NumpadSubtract", { shiftKey: false })).toEqual({ type: "zoom", delta: -1 });
+  });
+  it("⌘ 組合在 Windows 上不觸發，Ctrl 組合在 macOS 上也不觸發", () => {
+    expect(win("KeyT", { ctrlKey: false, metaKey: true, shiftKey: false })).toBeNull();
+    expect(
+      shortcutAction(
+        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: "t", code: "KeyT" },
+        "mac",
+      ),
+    ).toBeNull();
   });
 });
