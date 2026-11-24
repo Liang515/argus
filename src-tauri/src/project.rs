@@ -246,13 +246,13 @@ pub fn find_agents(path_var: &str) -> Vec<String> {
 }
 
 #[cfg_attr(windows, allow(dead_code))]
-#[cfg_attr(windows, allow(dead_code))]
 const PATH_MARK: &str = "__ARGUS_PATH__";
 /// 互動式 shell 可能被使用者設定拖住（自動更新、tmux 等），超過就改用 App 自己的 PATH。
+#[cfg_attr(windows, allow(dead_code))]
 const SHELL_PATH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-#[cfg_attr(windows, allow(dead_code))]
 /// 取標記下一行：shell 設定可能也會印東西。`printenv PATH` 在 zsh、bash、fish 都是冒號分隔。
+#[cfg_attr(windows, allow(dead_code))]
 pub fn path_after_marker(stdout: &str) -> Option<String> {
     let mut lines = stdout.lines();
     lines.find(|l| l.trim() == PATH_MARK)?;
@@ -262,8 +262,8 @@ pub fn path_after_marker(stdout: &str) -> Option<String> {
         .filter(|l| !l.is_empty())
 }
 
-#[cfg_attr(windows, allow(dead_code))]
 /// 執行指令並在時限內取得 stdout；逾時就結束它並回傳 None。
+#[cfg_attr(windows, allow(dead_code))]
 pub fn stdout_within(mut cmd: Command, limit: std::time::Duration) -> Option<String> {
     use std::io::Read;
     use std::process::Stdio;

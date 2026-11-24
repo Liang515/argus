@@ -168,7 +168,11 @@ pub fn pty_spawn(
             pixel_height: 0,
         })
         .map_err(|e| e.to_string())?;
+    // Windows（ConPTY）沒有終端機裝置路徑；hook 靠它回報狀態，所以 Windows 目前沒有燈號 hook
+    #[cfg(unix)]
     let tty = pair.master.tty_name();
+    #[cfg(not(unix))]
+    let tty: Option<std::path::PathBuf> = None;
     let command = build_command(&cwd, |shell| {
         argus_env(&id, tty.as_deref(), shell, state.integration.as_ref())
     });
