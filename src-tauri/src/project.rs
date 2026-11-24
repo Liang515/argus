@@ -303,7 +303,7 @@ pub fn stdout_within(mut cmd: Command, limit: std::time::Duration) -> Option<Str
 #[cfg(windows)]
 #[tauri::command]
 pub async fn detect_agents() -> Vec<String> {
-    find_agents(&std::env::var("PATH").unwrap_or_default())
+    find_agents(&crate::sys::current_path())
 }
 
 /// GUI App 拿不到使用者的 PATH，所以問一次 login shell（會載入 .zshrc）。

@@ -1,4 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import { UnicodeGraphemesAddon } from "@xterm/addon-unicode-graphemes";
@@ -7,6 +8,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { type ILink, type ITheme, Terminal } from "@xterm/xterm";
 import { type ActivityEvent, parseActivity } from "./activity";
 import type { AgentId } from "./agents";
+import { parseOsc52 } from "./clipboard";
 import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
 import { DEFAULT_FONT_SIZE } from "./fontSize";
@@ -139,6 +141,13 @@ export class TerminalSession {
       return true;
     });
 
+    // 終端機裡的程式（例如 Claude Code 選取文字後）請我們寫入剪貼簿；只寫不讀，見 clipboard.ts
+    this.term.parser.registerOscHandler(52, (data) => {
+      const text = parseOsc52(data);
+      if (text !== null) void writeText(text).catch(() => {});
+      return true;
+    });
+
     this.term.attachCustomKeyEventHandler((e) => {
       // App 快捷鍵不送進 shell，交給 window 上的監聽處理
       if (shortcutAction(e)) return false;
@@ -149,7 +158,8 @@ export class TerminalSession {
           if (edit.type === "select-all") this.term.selectAll();
           else if (edit.type === "copy") {
             const text = this.term.getSelection();
-            if (text) void navigator.clipboard.writeText(text).catch(() => {});
+            // 直接寫系統剪貼簿：WebView2 的 navigator.clipboard 不一定允許
+            if (text) void writeText(text).catch(() => {});
             this.term.clearSelection();
           } else if (edit.type === "send" && this.running) this.send(edit.data);
         },

@@ -146,6 +146,13 @@ fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> Co
     cmd.args(args);
     cmd.env_clear();
     for (k, v) in child_env(std::env::vars().filter(|(k, _)| k != "ZDOTDIR"), extra) {
+        // Windows：PATH 換成最新的（見 sys::current_path），不用重開 Argus 就找得到剛裝的 agent
+        #[cfg(windows)]
+        let v = if k.eq_ignore_ascii_case("PATH") {
+            crate::sys::current_path()
+        } else {
+            v
+        };
         cmd.env(k, v);
     }
     let dir = if Path::new(cwd).is_dir() {

@@ -35,6 +35,111 @@ pub fn is_network_path(raw: &str) -> bool {
         || raw.starts_with("/\\")
 }
 
+/// agent 官方安裝程式放執行檔的位置（相對於家目錄），預設不會加進 PATH：
+/// Claude Code → `~\.local\bin`；Antigravity CLI → `%LOCALAPPDATA%\agy\bin`。
+#[cfg_attr(not(windows), allow(dead_code))]
+const AGENT_DIRS: [&str; 2] = [r".local\bin", r"AppData\Local\agy\bin"];
+
+/// 把存在、但還不在 PATH 裡的 agent 安裝位置接在後面。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn with_agent_dirs(path_var: &str, home: &Path) -> String {
+    let mut out = path_var.trim_end_matches(PATH_SEPARATOR).to_string();
+    for rel in AGENT_DIRS {
+        let dir = home.join(rel);
+        let dir_str = dir.to_string_lossy();
+        let present = path_var
+            .split(PATH_SEPARATOR)
+            .any(|d| d.trim().trim_matches('"').eq_ignore_ascii_case(&dir_str));
+        if !present && dir.is_dir() {
+            if !out.is_empty() {
+                out.push(PATH_SEPARATOR);
+            }
+            out.push_str(&dir_str);
+        }
+    }
+    out
+}
+
+/// Windows：新分頁與 agent 偵測用的 PATH。
+/// 程式啟動時拿到的 PATH 是當時的副本，使用者之後改了 PATH（或剛裝好 agent）要重開 Argus 才看得到；
+/// 所以和 Windows Terminal 一樣，每次都從登錄檔讀系統＋使用者的最新值，再補上 agent 安裝位置。
+#[cfg(windows)]
+pub fn current_path() -> String {
+    let fresh = [
+        registry_path(
+            true,
+            r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+        ),
+        registry_path(false, "Environment"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|p| !p.is_empty())
+    .collect::<Vec<_>>()
+    .join(";");
+    let base = if fresh.is_empty() {
+        std::env::var("PATH").unwrap_or_default()
+    } else {
+        fresh
+    };
+    match dirs::home_dir() {
+        Some(home) => with_agent_dirs(&base, &home),
+        None => base,
+    }
+}
+
+/// 讀登錄檔裡的 Path 值；`%USERPROFILE%` 這類變數由 RegGetValueW 展開。
+#[cfg(windows)]
+fn registry_path(machine: bool, subkey: &str) -> Option<String> {
+    use windows_sys::Win32::System::Registry::{
+        HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ, RegGetValueW,
+    };
+    let wide = |s: &str| {
+        s.encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>()
+    };
+    let key = if machine {
+        HKEY_LOCAL_MACHINE
+    } else {
+        HKEY_CURRENT_USER
+    };
+    let (subkey, value) = (wide(subkey), wide("Path"));
+    let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
+    let mut size: u32 = 0;
+    // SAFETY：先問需要的大小，再用足夠的緩衝區讀；字串都以 0 結尾。
+    unsafe {
+        if RegGetValueW(
+            key,
+            subkey.as_ptr(),
+            value.as_ptr(),
+            flags,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut size,
+        ) != 0
+        {
+            return None;
+        }
+        let mut buf = vec![0u16; (size as usize).div_ceil(2) + 1];
+        let mut bytes = (buf.len() * 2) as u32;
+        if RegGetValueW(
+            key,
+            subkey.as_ptr(),
+            value.as_ptr(),
+            flags,
+            std::ptr::null_mut(),
+            buf.as_mut_ptr().cast(),
+            &mut bytes,
+        ) != 0
+        {
+            return None;
+        }
+        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        Some(String::from_utf16_lossy(&buf[..len]))
+    }
+}
+
 /// PATH 的分隔字元：macOS 是冒號，Windows 是分號（Windows 路徑本身含冒號）。
 pub const PATH_SEPARATOR: char = if cfg!(windows) { ';' } else { ':' };
 
@@ -65,10 +170,10 @@ pub fn find_in(path_var: &str, name: &str) -> Option<PathBuf> {
         .find(|file| is_executable(file))
 }
 
-/// 在目前 App 的 PATH 裡找執行檔（macOS 改問 login shell，見 `project::detect_agents`）。
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+/// 在最新的 PATH 裡找執行檔（Windows 用；macOS 改問 login shell，見 `project::detect_agents`）。
+#[cfg(windows)]
 pub fn find_in_path(name: &str) -> Option<PathBuf> {
-    find_in(&std::env::var("PATH").unwrap_or_default(), name)
+    find_in(&current_path(), name)
 }
 
 /// 是可以執行的檔案：macOS 看執行權限，Windows 看副檔名。
@@ -290,6 +395,24 @@ mod tests {
         let text = dir.path().join("a.md");
         fs::write(&text, "x").unwrap();
         assert!(!is_executable(&text));
+    }
+
+    #[test]
+    fn agent_dirs_are_appended_once_and_only_if_present() {
+        let home = tempfile::tempdir().unwrap();
+        let claude_dir = home.path().join(AGENT_DIRS[0]);
+        let base = format!("/usr/bin{PATH_SEPARATOR}");
+        // 還沒裝：不加
+        assert_eq!(with_agent_dirs(&base, home.path()), "/usr/bin");
+        fs::create_dir_all(&claude_dir).unwrap();
+        let added = with_agent_dirs(&base, home.path());
+        assert_eq!(
+            added,
+            format!("/usr/bin{PATH_SEPARATOR}{}", claude_dir.to_string_lossy())
+        );
+        // 已經在 PATH 裡（含引號）：不重複
+        let quoted = format!("\"{}\"", claude_dir.to_string_lossy());
+        assert_eq!(with_agent_dirs(&quoted, home.path()), quoted);
     }
 
     #[test]
