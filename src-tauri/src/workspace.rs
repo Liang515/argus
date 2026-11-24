@@ -1,4 +1,4 @@
-//! 分頁清單持久化到 `~/.argus/workspaces.json`。
+//! 分頁清單持久化到 `~/.argus/workspaces.json`，「近況」紀錄存在 `~/.argus/recap.json`。
 
 use std::fs;
 use std::io;
@@ -41,13 +41,17 @@ pub fn load_from(path: &Path) -> Workspace {
 }
 
 /// 先寫暫存檔再 rename，寫到一半當掉也不會留下壞檔。
-pub fn save_to(path: &Path, ws: &Workspace) -> io::Result<()> {
+fn write_atomic(path: &Path, content: &str) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
     let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, serde_json::to_string_pretty(ws)?)?;
+    fs::write(&tmp, content)?;
     fs::rename(tmp, path)
+}
+
+pub fn save_to(path: &Path, ws: &Workspace) -> io::Result<()> {
+    write_atomic(path, &serde_json::to_string_pretty(ws)?)
 }
 
 #[tauri::command]
@@ -58,6 +62,34 @@ pub fn workspace_load() -> Result<Workspace, String> {
 #[tauri::command]
 pub fn workspace_save(workspace: Workspace) -> Result<(), String> {
     save_to(&workspace_file()?, &workspace).map_err(|e| e.to_string())
+}
+
+fn recap_file() -> Result<PathBuf, String> {
+    dirs::home_dir()
+        .map(|h| h.join(".argus").join("recap.json"))
+        .ok_or_else(|| "no_home".to_string())
+}
+
+/// 「近況」紀錄的上限：前端已經限制專案數與檔案數，這裡再擋一次異常大的內容。
+const RECAP_MAX_BYTES: usize = 1024 * 1024;
+
+/// 近況紀錄由前端整理與驗證，這裡只負責讀寫（不存在就回傳 None）。
+#[tauri::command]
+pub fn recap_load() -> Result<Option<String>, String> {
+    Ok(fs::read_to_string(recap_file()?).ok())
+}
+
+#[tauri::command]
+pub fn recap_save(json: String) -> Result<(), String> {
+    save_recap_to(&recap_file()?, &json)
+}
+
+fn save_recap_to(path: &Path, json: &str) -> Result<(), String> {
+    if json.len() > RECAP_MAX_BYTES {
+        return Err("recap_too_large".into());
+    }
+    serde_json::from_str::<serde_json::Value>(json).map_err(|e| e.to_string())?;
+    write_atomic(path, json).map_err(|e| e.to_string())
 }
 
 /// 把使用者輸入的路徑（可用 `~`）轉成存在的資料夾絕對路徑，不是資料夾就回傳 None。
@@ -102,6 +134,22 @@ mod tests {
         let path = dir.path().join("w.json");
         fs::write(&path, "{not json").unwrap();
         assert_eq!(load_from(&path), Workspace::default());
+    }
+
+    #[test]
+    fn recap_saves_valid_json_and_rejects_junk() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub").join("recap.json");
+        save_recap_to(&path, r#"[{"path":"/a","at":1,"files":[]}]"#).unwrap();
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            r#"[{"path":"/a","at":1,"files":[]}]"#
+        );
+        assert!(save_recap_to(&path, "{oops").is_err());
+        let huge = format!("\"{}\"", "x".repeat(RECAP_MAX_BYTES));
+        assert_eq!(save_recap_to(&path, &huge), Err("recap_too_large".into()));
+        // 失敗時不動原本的檔案
+        assert!(fs::read_to_string(&path).unwrap().contains("/a"));
     }
 
     #[test]

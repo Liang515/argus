@@ -162,6 +162,8 @@ pub fn run() {
             workspace::workspace_load,
             workspace::workspace_save,
             workspace::resolve_dir,
+            workspace::recap_load,
+            workspace::recap_save,
             git::git_branch,
             project::git_status,
             project::read_project_doc,

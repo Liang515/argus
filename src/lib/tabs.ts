@@ -12,6 +12,7 @@ export type ShortcutAction =
   | { type: "next" }
   | { type: "prev" }
   | { type: "palette" }
+  | { type: "recap" }
   | { type: "sidebar" }
   | { type: "duplicate" }
   | { type: "help" }
@@ -59,6 +60,7 @@ export function shortcutAction(e: KeyLike): ShortcutAction | null {
   if (key === "t") return { type: "new" };
   if (key === "w") return { type: "close" };
   if (key === "k" || key === "p") return { type: "palette" };
+  if (key === "j") return { type: "recap" };
   if (key === "b") return { type: "sidebar" };
   if (e.code === "Slash" || key === "/") return { type: "help" };
   if (e.code === "Equal" || key === "+") return { type: "zoom", delta: 1 };

@@ -1,4 +1,4 @@
-import { ArrowUpCircle, ChevronDown, GitBranch, Keyboard, Plus, X } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, GitBranch, History, Keyboard, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import type { CustomAgent } from "../lib/customAgents";
@@ -14,7 +14,7 @@ const DOT_CLASS: Record<Exclude<ClaudeStatus, "off">, string> = {
   done: "bg-status-done",
 };
 
-function StatusDot({
+export function StatusDot({
   status,
   agent,
   active,
@@ -55,6 +55,7 @@ interface Props {
   onClose: (id: string) => void;
   onAdd: () => void;
   onHelp: () => void;
+  onRecap: () => void;
   onAgent: (intent: AgentIntent, agent?: AgentId) => void;
   onInstallAgent: (agent: AgentId) => void;
   onAgentMenuOpen: () => void;
@@ -81,6 +82,7 @@ export function TabBar({
   onClose,
   onAdd,
   onHelp,
+  onRecap,
   onAgent,
   onInstallAgent,
   onAgentMenuOpen,
@@ -282,6 +284,15 @@ export function TabBar({
           onCustom={onCustomAgent}
         />
       )}
+      <button
+        type="button"
+        aria-label={t("recap.title")}
+        title={t("recap.buttonTitle")}
+        onClick={onRecap}
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-deck-muted hover:bg-deck-hover hover:text-deck-text"
+      >
+        <History size={15} />
+      </button>
       <button
         type="button"
         aria-label={t("tab.shortcuts")}

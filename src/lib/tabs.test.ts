@@ -56,6 +56,8 @@ describe("shortcutAction", () => {
     expect(shortcutAction(key("9"))).toEqual({ type: "select", index: -1 });
     expect(shortcutAction(key("k"))).toEqual({ type: "palette" });
     expect(shortcutAction(key("p"))).toEqual({ type: "palette" });
+    expect(shortcutAction(key("j"))).toEqual({ type: "recap" });
+    expect(shortcutAction(key("j", { ctrlKey: true }))).toBeNull();
     expect(shortcutAction(key("b"))).toEqual({ type: "sidebar" });
     expect(shortcutAction(key("/", { code: "Slash" }))).toEqual({ type: "help" });
     expect(shortcutAction(key("T", { shiftKey: true, code: "KeyT" }))).toEqual({

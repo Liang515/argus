@@ -18,6 +18,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
     title: t("help.panels"),
     items: [
       [lang === "en" ? "⌘K or ⌘P" : "⌘K 或 ⌘P", t("help.panels.palette")],
+      ["⌘J", t("help.panels.recap")],
       ["⌘B", t("help.panels.sidebar")],
       ["⌘/", t("help.panels.help")],
       [t("help.panels.themeKeys"), t("help.panels.theme")],
@@ -52,7 +53,10 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
   },
   {
     title: t("help.agents"),
-    items: [[t("help.agents.buttonsKeys"), t("help.agents.buttons")]],
+    items: [
+      [t("help.agents.buttonsKeys"), t("help.agents.buttons")],
+      [t("help.agents.ownKeys"), t("help.agents.own")],
+    ],
   },
 ];
 

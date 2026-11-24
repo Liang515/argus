@@ -185,6 +185,8 @@ const zh = {
   "help.links.url": "用瀏覽器開啟",
   "help.agents": "Agent",
   "help.agents.buttonsKeys": "右上按鈕",
+  "help.agents.ownKeys": "Claude／Antigravity 裡按 ?",
+  "help.agents.own": "查看 agent 自己的按鍵（例如 Claude 的 ⇧Tab 切換模式）",
   "help.agents.buttons":
     "沒有 agent：啟動／接續；Claude 閒置：新對話／切換對話；agent 執行中：在新分頁開其他 agent",
 
@@ -199,6 +201,24 @@ const zh = {
   "err.write_claude_md": "寫入 CLAUDE.md 失敗：{detail}",
   "err.no_home": "找不到家目錄",
   "err.no_worktree_name": "找不到可用的 worktree 名稱",
+  "recap.title": "近況",
+  "recap.buttonTitle": "近況：各專案最近做了什麼 (⌘J)",
+  "recap.placeholder": "搜尋專案或做過的事",
+  "recap.empty": "還沒有紀錄。agent 在專案裡動作後，這裡會列出最後一句指令和改過的檔案。",
+  "recap.noMatch": "沒有符合的專案",
+  "recap.noPrompt": "（沒有記到指令）",
+  "recap.files": "改了 {count} 個檔：{names}",
+  "recap.filesOne": "改了 1 個檔：{names}",
+  "recap.uncommitted": "{count} 個未提交",
+  "recap.closed": "分頁已關",
+  "recap.hintOpen": "↵ 切過去",
+  "recap.justNow": "剛剛",
+  "recap.minutes": "{n} 分鐘前",
+  "recap.hours": "{n} 小時前",
+  "recap.yesterday": "昨天",
+  "recap.days": "{n} 天前",
+  "help.panels.recap": "近況：各專案最近做了什麼、做到哪",
+  "app.emptyRecap": "各專案最近做了什麼",
 } as const;
 
 export type MessageKey = keyof typeof zh;
@@ -387,6 +407,8 @@ const en: Record<MessageKey, string> = {
   "help.links.url": "Open in your browser",
   "help.agents": "Agents",
   "help.agents.buttonsKeys": "Top-right buttons",
+  "help.agents.ownKeys": "? in Claude / Antigravity",
+  "help.agents.own": "Show the agent's own keys (e.g. ⇧Tab in Claude switches modes)",
   "help.agents.buttons":
     "No agent: start / resume. Claude idle: new chat / switch chat. Agent busy: open another agent in a new tab",
 
@@ -401,6 +423,25 @@ const en: Record<MessageKey, string> = {
   "err.write_claude_md": "Couldn't write CLAUDE.md: {detail}",
   "err.no_home": "Home folder not found",
   "err.no_worktree_name": "No free worktree name is left",
+  "recap.title": "Recent work",
+  "recap.buttonTitle": "Recent work across projects (⌘J)",
+  "recap.placeholder": "Search projects or what you did",
+  "recap.empty":
+    "Nothing yet. Once an agent works in a project, its last prompt and edited files show up here.",
+  "recap.noMatch": "No matching projects",
+  "recap.noPrompt": "(no prompt recorded)",
+  "recap.files": "{count} files edited: {names}",
+  "recap.filesOne": "1 file edited: {names}",
+  "recap.uncommitted": "{count} uncommitted",
+  "recap.closed": "tab closed",
+  "recap.hintOpen": "↵ go there",
+  "recap.justNow": "just now",
+  "recap.minutes": "{n}m ago",
+  "recap.hours": "{n}h ago",
+  "recap.yesterday": "yesterday",
+  "recap.days": "{n}d ago",
+  "help.panels.recap": "Recent work: what each project did last and where it stopped",
+  "app.emptyRecap": "Recent work across projects",
 };
 
 const MESSAGES: Record<Lang, Record<MessageKey, string>> = { "zh-TW": zh, en };

@@ -6,6 +6,7 @@ import type { Update } from "@tauri-apps/plugin-updater";
 import { FolderOpen } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommandPalette, type PaletteAction } from "./components/CommandPalette";
+import { RecapPanel } from "./components/RecapPanel";
 import { ShortcutHelp } from "./components/ShortcutHelp";
 import { Sidebar } from "./components/Sidebar";
 import { TabBar } from "./components/TabBar";
@@ -31,6 +32,7 @@ import {
   pickEditor,
   savePreferredEditor,
 } from "./lib/project";
+import { mergeRecaps, noteActivity, noteStatus, type ProjectRecap, parseRecaps } from "./lib/recap";
 import type { ClaudeStatus } from "./lib/status";
 import {
   activeAfterClose,
@@ -67,6 +69,8 @@ const BRANCH_REFRESH_MS = 5000;
 const STALE_CHECK_MS = 2000;
 const DETECT_THROTTLE_MS = 5000;
 const DETECT_RELAXED_MS = 60_000;
+/** 近況紀錄變動後多久存檔：agent 連續動作時不要每一步都寫檔。 */
+const RECAP_SAVE_DELAY_MS = 1500;
 const SIDEBAR_KEY = "argus.sidebar";
 const THEME_KEY = "argus.theme";
 const FONT_SIZE_KEY = "argus.fontSize";
@@ -170,6 +174,11 @@ export default function App() {
   // all：一般切換器；duplicate：⌘⇧T 選擇怎麼在同專案再開分頁
   const [palette, setPalette] = useState<"all" | "duplicate" | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [recaps, setRecaps] = useState<ProjectRecap[]>([]);
+  const [recapLoaded, setRecapLoaded] = useState(false);
+  const recapLoadedRef = useRef(false);
+  recapLoadedRef.current = recapLoaded;
   const [sidebarOpen, setSidebarOpen] = useState(loadSidebarPref);
   const [themeId, setThemeId] = useState<ThemeId>(loadThemePref);
   const [fontSize, setFontSize] = useState(loadFontSize);
@@ -177,8 +186,11 @@ export default function App() {
   const [lightUi, setLightUi] = useState(false);
   const sessions = useRef(new Map<string, TerminalSession>());
   const stageRef = useRef<HTMLDivElement>(null);
-  const latest = useRef({ tabs, activeId, statuses, runningAgents, installed });
-  latest.current = { tabs, activeId, statuses, runningAgents, installed };
+  // 已經寫進 recap.json 的內容；一樣就不重寫（例如剛讀完檔）
+  const savedRecaps = useRef<string | null>(null);
+  const overlays = { palette, recapOpen, helpOpen };
+  const latest = useRef({ tabs, activeId, statuses, runningAgents, installed, recaps, overlays });
+  latest.current = { tabs, activeId, statuses, runningAgents, installed, recaps, overlays };
 
   const sessionFor = useCallback((tab: Tab) => {
     let session = sessions.current.get(tab.id);
@@ -189,12 +201,15 @@ export default function App() {
         (id, status, agent) => {
           setStatuses((prev) => ({ ...prev, [id]: status }));
           setRunningAgents((prev) => ({ ...prev, [id]: agent }));
+          setRecaps((prev) => noteStatus(prev, tab.path, status, agent, Date.now()));
         },
-        (id, event) =>
+        (id, event) => {
           setActivities((prev) => ({
             ...prev,
             [id]: applyActivity(prev[id] ?? EMPTY_ACTIVITY, event, Date.now()),
-          })),
+          }));
+          setRecaps((prev) => noteActivity(prev, tab.path, event, Date.now()));
+        },
       );
       sessions.current.set(tab.id, session);
     }
@@ -216,6 +231,34 @@ export default function App() {
     if (!loaded) return;
     invoke("workspace_save", { workspace: { tabs, activeId, recent } }).catch(() => {});
   }, [tabs, activeId, recent, loaded]);
+
+  // 讀檔失敗（例如找不到家目錄）就整次不存，避免用空清單蓋掉舊紀錄
+  useEffect(() => {
+    invoke<string | null>("recap_load")
+      .then((json) => {
+        // 沒有存檔時當成已存了空清單，沒有紀錄就不建檔
+        savedRecaps.current = json ?? "[]";
+        setRecaps((prev) => mergeRecaps(parseRecaps(json), prev));
+        setRecapLoaded(true);
+      })
+      .catch(() => {});
+  }, []);
+
+  const saveRecaps = useCallback(() => {
+    const json = JSON.stringify(latest.current.recaps);
+    if (json === savedRecaps.current) return Promise.resolve();
+    savedRecaps.current = json;
+    return invoke("recap_save", { json }).catch(() => {
+      savedRecaps.current = null;
+    });
+  }, []);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: recaps 一變就重新排程存檔，內容由 saveRecaps 從 latest 讀
+  useEffect(() => {
+    if (!recapLoaded) return;
+    const timer = setTimeout(() => void saveRecaps(), RECAP_SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [recaps, recapLoaded, saveRecaps]);
 
   // 偵測裝了哪些 agent 與編輯器。切回視窗時重新偵測，照著提示裝好後回來就能直接用；
   // 全部都裝了就不再偵測（偵測要啟動一次使用者的 shell）
@@ -274,13 +317,15 @@ export default function App() {
             okLabel: t("app.quitOk"),
             cancelLabel: t("app.cancel"),
           }));
+        // 還在等存檔的近況先寫進去，否則最後幾秒的動作會漏掉
+        if (ok && recapLoadedRef.current) await saveRecaps();
         await invoke(ok ? "confirm_quit" : "cancel_quit");
       } finally {
         asking = false;
       }
     });
     return () => void unlisten.then((f) => f());
-  }, []);
+  }, [saveRecaps]);
 
   // 檢查新版：啟動時一次，之後每 6 小時。只看正式發佈的版本（草稿不會推送）
   useEffect(() => {
@@ -490,14 +535,20 @@ export default function App() {
     [insertTabAfter],
   );
 
-  const closePalette = useCallback(() => {
-    setPalette(null);
-    const { activeId: active } = latest.current;
-    // 等 overlay 移除後再把焦點還給終端機
+  /** 等 overlay 移除後把焦點還給終端機；期間又開了別的面板（例如從 ⌘K 開近況）就不搶。 */
+  const refocusTerminal = useCallback(() => {
     requestAnimationFrame(() => {
-      if (active) sessions.current.get(active)?.focus();
+      const { activeId: active, overlays: o } = latest.current;
+      if (active && o.palette === null && !o.recapOpen && !o.helpOpen) {
+        sessions.current.get(active)?.focus();
+      }
     });
   }, []);
+
+  const closePalette = useCallback(() => {
+    setPalette(null);
+    refocusTerminal();
+  }, [refocusTerminal]);
 
   const closeTab = useCallback(async (id: string) => {
     const busy = await invoke<boolean>("pty_is_busy", { id }).catch(() => false);
@@ -633,12 +684,31 @@ export default function App() {
     }
   }, [update, updating]);
 
+  const closeRecap = useCallback(() => {
+    setRecapOpen(false);
+    refocusTerminal();
+  }, [refocusTerminal]);
+
+  /** 近況裡選了專案：有開著的分頁就切過去，否則重新開一個（資料夾不在了回傳 false）。 */
+  const openRecap = useCallback(
+    async (path: string, tabId: string | null) => {
+      if (!tabId) return openTypedPath(path);
+      setActiveId(tabId);
+      return true;
+    },
+    [openTypedPath],
+  );
+
   const closeHelp = useCallback(() => {
     setHelpOpen(false);
-    const { activeId: active } = latest.current;
-    requestAnimationFrame(() => {
-      if (active) sessions.current.get(active)?.focus();
-    });
+    refocusTerminal();
+  }, [refocusTerminal]);
+
+  /** 面板一次只開一個：開新的就關掉其他的。 */
+  const showOverlay = useCallback((kind: "all" | "duplicate" | "recap" | "help") => {
+    setPalette(kind === "all" || kind === "duplicate" ? kind : null);
+    setRecapOpen(kind === "recap");
+    setHelpOpen(kind === "help");
   }, []);
 
   useEffect(() => {
@@ -648,11 +718,23 @@ export default function App() {
       e.preventDefault();
       e.stopPropagation();
       const { tabs: current, activeId: active } = latest.current;
-      if (action.type === "palette") setPalette((p) => (p ? null : "all"));
-      else if (action.type === "duplicate") {
-        if (active) setPalette("duplicate");
-      } else if (action.type === "help") setHelpOpen((o) => !o);
-      else if (action.type === "move") {
+      const {
+        palette: openPalette,
+        recapOpen: openRecapPanel,
+        helpOpen: openHelp,
+      } = latest.current.overlays;
+      if (action.type === "palette") {
+        if (openPalette) closePalette();
+        else showOverlay("all");
+      } else if (action.type === "recap") {
+        if (openRecapPanel) closeRecap();
+        else showOverlay("recap");
+      } else if (action.type === "duplicate") {
+        if (active) showOverlay("duplicate");
+      } else if (action.type === "help") {
+        if (openHelp) closeHelp();
+        else showOverlay("help");
+      } else if (action.type === "move") {
         const index = current.findIndex((t) => t.id === active);
         if (active && index !== -1) setTabs((prev) => moveTab(prev, active, index + action.delta));
       } else if (action.type === "zoom") {
@@ -669,7 +751,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [addTab, closeTab]);
+  }, [addTab, closeTab, closePalette, closeRecap, closeHelp, showOverlay]);
 
   const activeTab = tabs.find((t) => t.id === activeId);
   const labels = useMemo(() => tabLabels(tabs), [tabs]);
@@ -701,7 +783,8 @@ export default function App() {
         hint: "⌘B",
         run: () => setSidebarOpen((o) => !o),
       },
-      { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => setHelpOpen(true) },
+      { id: "recap", label: t("recap.title"), hint: "⌘J", run: () => showOverlay("recap") },
+      { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => showOverlay("help") },
       { id: "custom-edit", label: t("custom.edit"), run: editCustomAgents },
       // 兩種語言都寫，用哪種語言搜尋都找得到
       ...(
@@ -827,6 +910,7 @@ export default function App() {
     agentAction,
     closeTab,
     duplicateActions,
+    showOverlay,
   ]);
 
   return (
@@ -845,7 +929,8 @@ export default function App() {
         onMove={(id, toIndex) => setTabs((prev) => moveTab(prev, id, toIndex))}
         onClose={(id) => void closeTab(id)}
         onAdd={() => void addTab()}
-        onHelp={() => setHelpOpen(true)}
+        onHelp={() => showOverlay("help")}
+        onRecap={() => showOverlay("recap")}
         onAgent={(intent, agent) => void agentAction(intent, agent)}
         onInstallAgent={installAgent}
         onAgentMenuOpen={onAgentMenuOpen}
@@ -883,6 +968,7 @@ export default function App() {
               <dl className="mt-2 grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-xs">
                 {[
                   ["⌘K", t("app.emptySearch")],
+                  ["⌘J", t("app.emptyRecap")],
                   ["⌘B", t("app.emptySidebar")],
                   ["⌘/", t("app.emptyAll")],
                 ].map(([keys, desc]) => (
@@ -925,6 +1011,17 @@ export default function App() {
           onOpenPath={openTypedPath}
           onBrowse={() => void addTab()}
           onClose={closePalette}
+        />
+      )}
+      {recapOpen && (
+        <RecapPanel
+          recaps={recaps}
+          tabs={tabs}
+          statuses={statuses}
+          runningAgents={runningAgents}
+          branches={branches}
+          onOpen={openRecap}
+          onClose={closeRecap}
         />
       )}
       {helpOpen && <ShortcutHelp onClose={closeHelp} />}
