@@ -7,7 +7,7 @@ import { lang, t } from "../lib/i18n";
 import type { GitChange } from "../lib/project";
 import { type ProjectRecap, projectStatus, relativeTime } from "../lib/recap";
 import type { ClaudeStatus } from "../lib/status";
-import { type Tab, tabName } from "../lib/tabs";
+import { shortPath, type Tab, tabName } from "../lib/tabs";
 import { StatusDot } from "./TabBar";
 
 interface Props {
@@ -23,9 +23,6 @@ interface Props {
 
 /** 列表最多顯示幾個專案（也是查 git 狀態的上限）。 */
 const MAX_SHOWN = 30;
-
-const shortPath = (path: string) => path.replace(/^\/Users\/[^/]+/, "~");
-const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 /** 「近況」：所有專案依最後動作時間排列，看每個專案最後做了什麼、做到哪。 */
 export function RecapPanel({
@@ -234,7 +231,7 @@ function Facts({
   if (recap.files.length) {
     const names = recap.files
       .slice(0, 3)
-      .map(fileName)
+      .map(tabName)
       .join(lang === "en" ? ", " : "、");
     const more = recap.files.length > 3 ? "…" : "";
     const key = recap.files.length === 1 ? "recap.filesOne" : "recap.files";

@@ -1,4 +1,5 @@
-//! 每個分頁一個 PTY session：在專案目錄啟動 login shell，輸出經 Channel 串流回前端。
+//! 每個分頁一個 PTY session：在專案目錄啟動 shell（macOS：login shell；Windows：PowerShell），
+//! 輸出經 Channel 串流回前端。
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -110,12 +111,28 @@ fn argus_env(
     extra
 }
 
-fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> CommandBuilder {
+/// 分頁要啟動的 shell 與參數。
+#[cfg(not(windows))]
+fn shell() -> (String, &'static [&'static str]) {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    // login shell 會載入 .zprofile / .zshrc，GUI App 才拿得到使用者的 PATH。
+    (shell, &["-l"])
+}
+
+/// Windows：有裝 PowerShell 7（pwsh）就用它，否則用系統內建的 Windows PowerShell。
+#[cfg(windows)]
+fn shell() -> (String, &'static [&'static str]) {
+    let shell = crate::sys::find_in_path("pwsh")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "powershell.exe".into());
+    (shell, &["-NoLogo"])
+}
+
+fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> CommandBuilder {
+    let (shell, args) = shell();
     let extra = extra(&shell);
     let mut cmd = CommandBuilder::new(&shell);
-    // login shell 會載入 .zprofile / .zshrc，GUI App 才拿得到使用者的 PATH。
-    cmd.arg("-l");
+    cmd.args(args);
     cmd.env_clear();
     for (k, v) in child_env(std::env::vars().filter(|(k, _)| k != "ZDOTDIR"), extra) {
         cmd.env(k, v);
@@ -125,7 +142,7 @@ fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> Co
     } else {
         dirs::home_dir()
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "/".into())
+            .unwrap_or_else(|| if cfg!(windows) { r"C:\" } else { "/" }.into())
     };
     cmd.cwd(dir);
     cmd
@@ -273,11 +290,54 @@ pub fn pty_is_busy(state: State<'_, PtyManager>, id: String) -> Result<bool, Str
 }
 
 /// 前景行程群組不是 shell，就代表有程式（agent、npm run dev…）在跑。
+#[cfg(unix)]
 fn is_busy(session: &Session) -> bool {
     match (session.master.process_group_leader(), session.shell_pid) {
         (Some(fg), Some(shell)) => fg as u32 != shell,
         _ => false,
     }
+}
+
+/// Windows 沒有前景行程群組：shell 底下有子行程（agent、npm run dev…）就算在忙。
+#[cfg(windows)]
+fn is_busy(session: &Session) -> bool {
+    session.shell_pid.is_some_and(has_child_process)
+}
+
+#[cfg(windows)]
+fn has_child_process(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+    // SAFETY：只讀取行程快照，handle 用完就關；PROCESSENTRY32W 依文件先設好 dwSize。
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return false;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut found = false;
+        let mut ok = Process32FirstW(snapshot, &mut entry) != 0;
+        while ok {
+            // conhost 是 ConPTY 自己的輔助行程，不算使用者啟動的程式
+            if entry.th32ParentProcessID == pid && !is_conhost(&entry.szExeFile) {
+                found = true;
+                break;
+            }
+            ok = Process32NextW(snapshot, &mut entry) != 0;
+        }
+        CloseHandle(snapshot);
+        found
+    }
+}
+
+#[cfg(windows)]
+fn is_conhost(exe: &[u16]) -> bool {
+    let len = exe.iter().position(|&c| c == 0).unwrap_or(exe.len());
+    String::from_utf16_lossy(&exe[..len]).eq_ignore_ascii_case("conhost.exe")
 }
 
 #[cfg(test)]
@@ -335,6 +395,7 @@ mod tests {
         assert_eq!(get(&env, "LANG"), Some("zh_TW.UTF-8"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn argus_env_wraps_zsh_only() {
         let integration = Integration {

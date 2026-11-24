@@ -52,6 +52,7 @@ name = "argus"
 version = "0.1.23"
 dependencies = [
  "dirs",
+ "dunce",
  "notify",
  "plist",
  "portable-pty",
@@ -64,6 +65,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tempfile",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -41,3 +41,13 @@ describe("lineText", () => {
     expect(width).toEqual([2, 1, 1]);
   });
 });
+
+describe("Windows 路徑", () => {
+  it("認得磁碟代號與反斜線路徑，並拆出行號", () => {
+    const found = findPathCandidates("error at C:\\proj\\src\\a.ts:12:3 and src\\b.ts");
+    expect(found.map((c) => [c.path, c.line, c.column])).toEqual([
+      ["C:\\proj\\src\\a.ts", 12, 3],
+      ["src\\b.ts", undefined, undefined],
+    ]);
+  });
+});

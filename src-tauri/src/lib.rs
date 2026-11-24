@@ -6,6 +6,7 @@ mod integration;
 mod paths;
 mod project;
 mod pty;
+mod sys;
 mod theme;
 mod workspace;
 
@@ -152,7 +153,14 @@ pub fn run() {
         ))
         .manage(project::Watchers::default())
         .manage(QuitGate::default())
-        .menu(build_menu)
+        // macOS 的選單在螢幕頂端；Windows 的選單會變成視窗裡的一排選單列，不需要
+        .menu(|app| {
+            if cfg!(target_os = "macos") {
+                build_menu(app)
+            } else {
+                Menu::new(app)
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             pty::pty_spawn,
             pty::pty_write,

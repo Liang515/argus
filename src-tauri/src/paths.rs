@@ -1,8 +1,7 @@
-//! 終端機裡的檔案路徑連結：確認路徑存在，⌘＋點擊時開啟或在 Finder 顯示。
+//! 終端機裡的檔案路徑連結：確認路徑存在，⌘＋點擊（Windows：Ctrl＋點擊）時開啟或在 Finder／檔案總管顯示。
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde::Serialize;
 
@@ -83,16 +82,14 @@ pub fn resolve_paths(base: String, candidates: Vec<String>) -> Vec<Option<Resolv
         .collect()
 }
 
-/// .app、腳本、安裝檔或可執行檔：打開等於執行，所以只在 Finder 顯示。
+/// .app、腳本、安裝檔或可執行檔：打開等於執行，所以只在 Finder／檔案總管顯示。
+/// 可執行檔在 macOS 看執行權限，在 Windows 看副檔名（.exe、.bat、.js… 見 [`crate::sys::WINDOWS_RUNNABLE`]）。
 pub fn is_runnable(path: &Path) -> bool {
     let by_extension = path
         .extension()
         .and_then(|e| e.to_str())
         .is_some_and(|e| RUNNABLE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
-    let executable_file = fs::metadata(path).is_ok_and(|m| {
-        m.is_file() && std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0
-    });
-    by_extension || executable_file
+    by_extension || crate::sys::is_executable(path)
 }
 
 /// 程式碼與文字檔：有裝 VS Code／Antigravity 時用它打開（還能跳到行號），不交給系統預設 App。
@@ -139,9 +136,27 @@ fn encode_path(path: &str) -> String {
     out
 }
 
+/// Windows 路徑 `C:\a\b` 寫成網址用的 `/C:/a/b`（磁碟代號的冒號保留）；其他路徑照常編碼。
+fn url_path(path: &str) -> String {
+    let bytes = path.as_bytes();
+    let has_drive = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/');
+    if has_drive {
+        format!(
+            "/{}:{}",
+            &path[..1],
+            encode_path(&path[2..].replace('\\', "/"))
+        )
+    } else {
+        encode_path(path)
+    }
+}
+
 /// `vscode://file/<路徑>:<行>:<欄>`；VS Code 系的編輯器都認得，開著或關著都能用。
 pub fn editor_url(scheme: &str, path: &str, line: Option<u32>, column: Option<u32>) -> String {
-    let mut url = format!("{scheme}://file{}", encode_path(path));
+    let mut url = format!("{scheme}://file{}", url_path(path));
     if let Some(line) = line {
         url.push_str(&format!(":{line}"));
         if let Some(column) = column {
@@ -203,7 +218,7 @@ pub async fn open_path(
     editor: Option<String>,
 ) -> Result<(), String> {
     // 先解開符號連結：名為 pic.png 卻指向某個 .app 的連結，要用實際的目標判斷
-    let real = fs::canonicalize(&path).map_err(|_| "file_missing".to_string())?;
+    let real = crate::sys::canonicalize(&path).map_err(|_| "file_missing".to_string())?;
     let target = real.as_path();
     let meta = fs::metadata(target).map_err(|_| "file_missing".to_string())?;
     let editor = if !reveal && !meta.is_dir() && is_text_file(target) {
@@ -211,25 +226,18 @@ pub async fn open_path(
     } else {
         None
     };
-    let mut cmd = Command::new("/usr/bin/open");
     match decide(target, meta.is_dir(), reveal, editor, line, column) {
-        OpenAction::Reveal => cmd.arg("-R").arg(target),
-        OpenAction::OpenDefault => cmd.arg(target),
-        OpenAction::Editor(url) => cmd.arg(url),
+        OpenAction::Reveal => crate::sys::reveal(target),
+        OpenAction::OpenDefault => crate::sys::open_default(target),
+        OpenAction::Editor(url) => crate::sys::open_url(&url),
         OpenAction::EditorApp(id) => {
             let editor = editors::find(id).ok_or("open_failed")?;
-            return if editors::open_with(editor, &target.to_string_lossy()) {
+            if editors::open_with(editor, &target.to_string_lossy()) {
                 Ok(())
             } else {
                 Err("open_failed".into())
-            };
+            }
         }
-    };
-    let status = cmd.status().map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("open_failed".into())
     }
 }
 
@@ -238,6 +246,19 @@ mod tests {
     use super::*;
     use crate::editors::find;
 
+    #[test]
+    fn editor_url_handles_windows_drive_paths() {
+        assert_eq!(
+            editor_url("vscode", r"C:\Users\me\專案\a.ts", Some(3), None),
+            "vscode://file/C:/Users/me/%E5%B0%88%E6%A1%88/a.ts:3"
+        );
+        assert_eq!(
+            editor_url("vscode", "/Users/me/a b.ts", None, None),
+            "vscode://file/Users/me/a%20b.ts"
+        );
+    }
+
+    #[cfg(unix)]
     #[test]
     fn expands_home_relative_and_absolute_paths() {
         let base = Path::new("/proj");
@@ -259,6 +280,7 @@ mod tests {
         assert_eq!(expand(base, home, ""), None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn resolves_only_existing_paths() {
         let dir = tempfile::tempdir().unwrap();
@@ -280,6 +302,7 @@ mod tests {
         assert_eq!(out[2], None);
     }
 
+    #[cfg(unix)]
     #[test]
     fn apps_scripts_and_executables_are_only_revealed() {
         let dir = tempfile::tempdir().unwrap();
@@ -352,6 +375,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn falls_back_to_reveal_or_default_app() {
         // 沒有編輯器：文字檔用系統預設 App，腳本只在 Finder 顯示
@@ -415,6 +439,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn symlinks_are_judged_by_their_real_target() {
         let dir = tempfile::tempdir().unwrap();

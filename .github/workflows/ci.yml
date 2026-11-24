@@ -4,10 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  # 手動在其他分支跑（例如還沒合併的 Windows 支援）
+  workflow_dispatch:
 
 jobs:
   check:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 

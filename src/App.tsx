@@ -24,7 +24,8 @@ import {
 import { type CustomAgent, parseCustomAgents } from "./lib/customAgents";
 import { nextFontSize, parseFontSize } from "./lib/fontSize";
 import { pushRecent } from "./lib/fuzzy";
-import { type Lang, lang, setLang, t, translateError } from "./lib/i18n";
+import { keys, type Lang, lang, setLang, t, translateError } from "./lib/i18n";
+import { isMac } from "./lib/platform";
 import {
   type EditorInfo,
   loadPreferredEditor,
@@ -86,6 +87,8 @@ function loadFontSize(): number {
 function loadThemePref(): ThemeId {
   try {
     const saved = localStorage.getItem(THEME_KEY);
+    // 「跟隨終端機」讀的是 macOS「終端機」App 的設定，其他平台沒有
+    if (saved === "terminal-app" && !isMac) return "argus";
     return isThemeId(saved) ? saved : "argus";
   } catch {
     return "argus";
@@ -780,11 +783,16 @@ export default function App() {
       {
         id: "sidebar",
         label: sidebarOpen ? t("app.hideSidebar") : t("app.showSidebar"),
-        hint: "⌘B",
+        hint: keys("⌘B"),
         run: () => setSidebarOpen((o) => !o),
       },
-      { id: "recap", label: t("recap.title"), hint: "⌘J", run: () => showOverlay("recap") },
-      { id: "help", label: t("app.shortcutHelp"), hint: "⌘/", run: () => showOverlay("help") },
+      { id: "recap", label: t("recap.title"), hint: keys("⌘J"), run: () => showOverlay("recap") },
+      {
+        id: "help",
+        label: t("app.shortcutHelp"),
+        hint: keys("⌘/"),
+        run: () => showOverlay("help"),
+      },
       { id: "custom-edit", label: t("custom.edit"), run: editCustomAgents },
       // 兩種語言都寫，用哪種語言搜尋都找得到
       ...(
@@ -801,22 +809,22 @@ export default function App() {
       {
         id: "zoom-in",
         label: t("app.zoomIn"),
-        hint: "⌘+",
+        hint: keys("⌘+"),
         run: () => setFontSize((n) => nextFontSize(n, 1)),
       },
       {
         id: "zoom-out",
         label: t("app.zoomOut"),
-        hint: "⌘−",
+        hint: keys("⌘−"),
         run: () => setFontSize((n) => nextFontSize(n, -1)),
       },
       {
         id: "zoom-reset",
         label: t("app.zoomReset"),
-        hint: "⌘0",
+        hint: keys("⌘0"),
         run: () => setFontSize((n) => nextFontSize(n, 0)),
       },
-      ...THEME_IDS.map((id) => ({
+      ...THEME_IDS.filter((id) => isMac || id !== "terminal-app").map((id) => ({
         id: `theme-${id}`,
         label: t("theme.pick", { name: t(THEME_NAME_KEY[id]) }),
         hint: id === themeId ? "✓" : undefined,
@@ -824,7 +832,7 @@ export default function App() {
       })),
     ];
     if (activeTab) {
-      for (const { id, label } of [...(editors ?? []), { id: "finder", label: "Finder" }]) {
+      for (const { id, label } of [...(editors ?? []), { id: "finder", label: keys("Finder") }]) {
         list.push({
           id: `open-${id}`,
           label: t("app.openIn", { app: label }),
@@ -887,7 +895,7 @@ export default function App() {
         {
           id: "close-tab",
           label: t("app.closeCurrent"),
-          hint: "⌘W",
+          hint: keys("⌘W"),
           run: () => void closeTab(activeTab.id),
         },
       );
@@ -955,7 +963,7 @@ export default function App() {
               >
                 <FolderOpen size={16} />
                 {t("app.openFolder")}
-                <kbd className="ml-1 text-xs text-deck-muted">⌘T</kbd>
+                <kbd className="ml-1 text-xs text-deck-muted">{keys("⌘T")}</kbd>
               </button>
               {/* 新裝好還沒有專案時，也能先當一般終端機用（開在家目錄） */}
               <button
@@ -967,10 +975,10 @@ export default function App() {
               </button>
               <dl className="mt-2 grid grid-cols-[auto_auto] gap-x-4 gap-y-1 text-xs">
                 {[
-                  ["⌘K", t("app.emptySearch")],
-                  ["⌘J", t("app.emptyRecap")],
-                  ["⌘B", t("app.emptySidebar")],
-                  ["⌘/", t("app.emptyAll")],
+                  [keys("⌘K"), t("app.emptySearch")],
+                  [keys("⌘J"), t("app.emptyRecap")],
+                  [keys("⌘B"), t("app.emptySidebar")],
+                  [keys("⌘/"), t("app.emptyAll")],
                 ].map(([keys, desc]) => (
                   <div key={keys} className="contents">
                     <dt className="text-right font-mono text-deck-text">{keys}</dt>

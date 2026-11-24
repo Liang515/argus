@@ -1,18 +1,22 @@
 //! 支援的編輯器：側欄「用編輯器開啟」、終端機 ⌘＋點擊路徑都用這張表。
 //! 前端只能傳 id，實際要開哪個 App 由這裡決定，無法指定任意程式。
-
-use std::process::Command;
+//! macOS 依 bundle id 找 App；Windows 依 PATH 裡的命令列工具（安裝時預設會加入 PATH）。
 
 use serde::Serialize;
 
 pub struct Editor {
     pub id: &'static str,
     pub label: &'static str,
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub bundle: &'static str,
     /// 預設安裝名稱（Spotlight 關掉時用來找 App，也是 `open -a` 的備案）
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub app: &'static str,
     /// `<scheme>://file/<路徑>:<行>:<欄>`；沒有的話只能打開檔案，無法跳行號
     pub scheme: Option<&'static str>,
+    /// Windows 上的命令列工具名稱（`code` → PATH 裡的 `code.cmd`）
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
+    pub cli: &'static str,
 }
 
 /// 依序偏好：使用者沒選過時，用第一個有安裝的。
@@ -23,6 +27,7 @@ pub const EDITORS: &[Editor] = &[
         bundle: "com.microsoft.VSCode",
         app: "Visual Studio Code.app",
         scheme: Some("vscode"),
+        cli: "code",
     },
     Editor {
         id: "cursor",
@@ -30,6 +35,7 @@ pub const EDITORS: &[Editor] = &[
         bundle: "com.todesktop.230313mzl4w4u92",
         app: "Cursor.app",
         scheme: Some("cursor"),
+        cli: "cursor",
     },
     Editor {
         id: "windsurf",
@@ -37,6 +43,7 @@ pub const EDITORS: &[Editor] = &[
         bundle: "com.exafunction.windsurf",
         app: "Windsurf.app",
         scheme: Some("windsurf"),
+        cli: "windsurf",
     },
     Editor {
         id: "antigravity",
@@ -44,6 +51,7 @@ pub const EDITORS: &[Editor] = &[
         bundle: "com.google.antigravity-ide",
         app: "Antigravity IDE.app",
         scheme: Some("antigravity-ide"),
+        cli: "antigravity",
     },
     Editor {
         id: "zed",
@@ -51,6 +59,7 @@ pub const EDITORS: &[Editor] = &[
         bundle: "dev.zed.Zed",
         app: "Zed.app",
         scheme: None,
+        cli: "zed",
     },
 ];
 
@@ -58,8 +67,14 @@ pub fn find(id: &str) -> Option<&'static Editor> {
     EDITORS.iter().find(|e| e.id == id)
 }
 
+#[cfg(target_os = "macos")]
 fn installed(editor: &Editor) -> bool {
     crate::project::app_installed(editor.bundle, editor.app)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn installed(editor: &Editor) -> bool {
+    crate::sys::find_in_path(editor.cli).is_some()
 }
 
 /// 使用者選的編輯器有裝就用它，否則用第一個有安裝的。
@@ -78,14 +93,22 @@ pub fn pick_installed(preferred: Option<&str>) -> Option<&'static Editor> {
 }
 
 /// 用這個編輯器打開檔案或資料夾：先依 bundle id，找不到再依 App 名稱。
+#[cfg(target_os = "macos")]
 pub fn open_with(editor: &Editor, target: &str) -> bool {
     let run = |flag: &str, app: &str| {
-        Command::new("/usr/bin/open")
+        crate::sys::command("/usr/bin/open")
             .args([flag, app, target])
             .status()
             .is_ok_and(|s| s.success())
     };
     run("-b", editor.bundle) || run("-a", editor.app.trim_end_matches(".app"))
+}
+
+/// Windows：執行編輯器的命令列工具。不等它結束（`code` 會一直開著）。
+#[cfg(not(target_os = "macos"))]
+pub fn open_with(editor: &Editor, target: &str) -> bool {
+    crate::sys::find_in_path(editor.cli)
+        .is_some_and(|cli| crate::sys::command(cli).arg(target).spawn().is_ok())
 }
 
 #[derive(Serialize)]

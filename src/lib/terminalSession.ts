@@ -11,6 +11,7 @@ import { handleEditKeyEvent } from "./editKeys";
 import { findPathCandidates, lineText } from "./filePaths";
 import { DEFAULT_FONT_SIZE } from "./fontSize";
 import { t } from "./i18n";
+import { isMac } from "./platform";
 import { openPath } from "./project";
 import {
   backgroundSessionId,
@@ -37,6 +38,11 @@ const ACTIVITY_TAG = "argus-activity;";
 
 /** 新開的分頁用目前選的配色（App 啟動與切換配色時更新）。 */
 let currentTheme: ITheme = BUILT_IN.argus.terminal;
+
+/** 連結要按住 ⌘（Windows：Ctrl）再點才開，一般點擊留給選取文字。 */
+function linkModifier(event: MouseEvent): boolean {
+  return isMac ? event.metaKey : event.ctrlKey;
+}
 
 export function setDefaultTerminalTheme(theme: ITheme) {
   currentTheme = theme;
@@ -102,7 +108,7 @@ export class TerminalSession {
     // 網址和檔案路徑一樣要 ⌘＋點擊才開，一般點擊留給選取文字；只開 http(s)
     this.term.loadAddon(
       new WebLinksAddon((event, uri) => {
-        if (event.metaKey && /^https?:\/\//i.test(uri)) void openUrl(uri);
+        if (linkModifier(event) && /^https?:\/\//i.test(uri)) void openUrl(uri);
       }),
     );
     // 寬度要和 agent（string-width）及 macOS「終端機」一致：⚠️ 這類「符號＋表情變體」算 2 格。
@@ -132,10 +138,18 @@ export class TerminalSession {
       // App 快捷鍵不送進 shell，交給 window 上的監聽處理
       if (shortcutAction(e)) return false;
       // ⌘← ⌘→ ⇧↩ 等編輯鍵：keydown 時送對應按鍵，其他事件也攔下，避免重複輸入
-      const passThrough = handleEditKeyEvent(e, (edit) => {
-        if (edit.type === "select-all") this.term.selectAll();
-        else if (this.running) this.send(edit.data);
-      });
+      const passThrough = handleEditKeyEvent(
+        e,
+        (edit) => {
+          if (edit.type === "select-all") this.term.selectAll();
+          else if (edit.type === "copy") {
+            const text = this.term.getSelection();
+            if (text) void navigator.clipboard.writeText(text).catch(() => {});
+            this.term.clearSelection();
+          } else if (edit.type === "send" && this.running) this.send(edit.data);
+        },
+        this.term.hasSelection(),
+      );
       if (!passThrough) return false;
       return true;
     });
@@ -297,7 +311,7 @@ export class TerminalSession {
         text: text.slice(c.start, c.end),
         decorations: { underline: true, pointerCursor: true },
         activate: (event) => {
-          if (!event.metaKey) return;
+          if (!linkModifier(event)) return;
           void openPath(target.path, event.altKey, c.line, c.column).catch(() => {});
         },
       });

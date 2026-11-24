@@ -7,6 +7,7 @@ import {
   overflowAlerts,
   resolveSelect,
   shortcutAction,
+  shortPath,
   type Tab,
   tabLabels,
   tabName,
@@ -193,5 +194,61 @@ describe("字體縮放快捷鍵", () => {
     });
     expect(shortcutAction(key("-", { code: "Minus" }))).toEqual({ type: "zoom", delta: -1 });
     expect(shortcutAction(key("0", { code: "Digit0" }))).toEqual({ type: "zoom", delta: 0 });
+  });
+});
+
+describe("Windows 路徑", () => {
+  it("分頁標題取最後一段，反斜線也算", () => {
+    expect(tabName("C:\\Users\\me\\argus")).toBe("argus");
+    expect(tabName("C:\\Users\\me\\argus\\")).toBe("argus");
+  });
+  it("家目錄縮寫成 ~", () => {
+    expect(shortPath("C:\\Users\\me\\argus")).toBe("~\\argus");
+    expect(shortPath("/Users/me/argus")).toBe("~/argus");
+    expect(shortPath("D:\\work")).toBe("D:\\work");
+  });
+});
+
+describe("Windows 快捷鍵（Ctrl+Shift，同 Windows Terminal）", () => {
+  const win = (code: string, extra: Partial<KeyboardEvent> = {}) =>
+    shortcutAction(
+      { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: "", code, ...extra },
+      "windows",
+    );
+  it("字母要 Ctrl+Shift", () => {
+    expect(win("KeyT")).toEqual({ type: "new" });
+    expect(win("KeyD")).toEqual({ type: "duplicate" });
+    expect(win("KeyW")).toEqual({ type: "close" });
+    expect(win("KeyK")).toEqual({ type: "palette" });
+    expect(win("KeyP")).toEqual({ type: "palette" });
+    expect(win("KeyJ")).toEqual({ type: "recap" });
+    expect(win("KeyB")).toEqual({ type: "sidebar" });
+    expect(win("Slash")).toEqual({ type: "help" });
+    expect(win("PageUp")).toEqual({ type: "move", delta: -1 });
+    expect(win("PageDown")).toEqual({ type: "move", delta: 1 });
+  });
+  it("單純 Ctrl+字母留給終端機（Ctrl+C、Ctrl+K、Ctrl+W）", () => {
+    for (const code of ["KeyC", "KeyK", "KeyW", "KeyT", "KeyJ"]) {
+      expect(win(code, { shiftKey: false })).toBeNull();
+    }
+    expect(win("KeyC")).toBeNull();
+  });
+  it("Ctrl+Tab 切換、Ctrl+數字跳分頁、Ctrl+= − 0 縮放", () => {
+    expect(win("Tab", { shiftKey: false })).toEqual({ type: "next" });
+    expect(win("Tab")).toEqual({ type: "prev" });
+    expect(win("Digit2", { shiftKey: false })).toEqual({ type: "select", index: 1 });
+    expect(win("Digit9", { shiftKey: false })).toEqual({ type: "select", index: -1 });
+    expect(win("Equal", { shiftKey: false })).toEqual({ type: "zoom", delta: 1 });
+    expect(win("Minus", { shiftKey: false })).toEqual({ type: "zoom", delta: -1 });
+    expect(win("Digit0", { shiftKey: false })).toEqual({ type: "zoom", delta: 0 });
+  });
+  it("⌘ 組合在 Windows 上不觸發，Ctrl 組合在 macOS 上也不觸發", () => {
+    expect(win("KeyT", { ctrlKey: false, metaKey: true, shiftKey: false })).toBeNull();
+    expect(
+      shortcutAction(
+        { metaKey: false, ctrlKey: true, altKey: false, shiftKey: true, key: "t", code: "KeyT" },
+        "mac",
+      ),
+    ).toBeNull();
   });
 });

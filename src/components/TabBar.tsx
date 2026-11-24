@@ -2,7 +2,8 @@ import { ArrowUpCircle, ChevronDown, GitBranch, History, Keyboard, Plus, X } fro
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import type { CustomAgent } from "../lib/customAgents";
-import { t } from "../lib/i18n";
+import { keys, t } from "../lib/i18n";
+import { isMac } from "../lib/platform";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
 import { dropIndex, hiddenTabIds, overflowAlerts, type Tab } from "../lib/tabs";
 import { AgentButtons } from "./AgentButtons";
@@ -177,7 +178,7 @@ export function TabBar({
   return (
     <header
       data-tauri-drag-region
-      className={`flex h-10 shrink-0 items-center gap-1 border-b border-deck-border bg-deck-panel pr-2 ${fullscreen ? "pl-2" : "pl-[84px]"}`}
+      className={`flex h-10 shrink-0 items-center gap-1 border-b border-deck-border bg-deck-panel pr-2 ${fullscreen || !isMac ? "pl-2" : "pl-[84px]"}`}
     >
       {/* 分頁不壓縮（名稱要看得清楚），放不下就捲動，或用右邊的「全部分頁」選單 */}
       <div
@@ -200,7 +201,7 @@ export function TabBar({
                   ? "bg-deck-hover text-deck-text shadow-[inset_0_0_0_1px_var(--color-deck-border)]"
                   : "text-deck-muted hover:bg-deck-hover/60 hover:text-deck-text"
               }`}
-              title={`${tab.path}${i < 9 ? `  (⌘${i + 1})` : ""}\n${t("tab.dragHint")}`}
+              title={`${tab.path}${i < 9 ? `  (${keys(`⌘${i + 1}`)})` : ""}\n${t("tab.dragHint")}`}
             >
               <button
                 type="button"
@@ -404,7 +405,7 @@ function TabsMenu({
                 {branch && (
                   <span className="max-w-24 truncate text-[11px] text-deck-muted">{branch}</span>
                 )}
-                {i < 9 && <kbd className="text-[11px] text-deck-muted">⌘{i + 1}</kbd>}
+                {i < 9 && <kbd className="text-[11px] text-deck-muted">{keys(`⌘${i + 1}`)}</kbd>}
               </button>
             );
           })}

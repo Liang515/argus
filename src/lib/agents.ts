@@ -1,3 +1,4 @@
+import { isMac } from "./platform";
 import type { ClaudeStatus } from "./status";
 
 /** Argus 支援的 coding agent；順序也是選單的顯示順序。 */
@@ -14,7 +15,7 @@ export const AGENTS: Record<
     resume: string;
     /** 官方安裝說明頁 */
     install: string;
-    /** 官方的 macOS 一行安裝指令（2026-11 從官網查證） */
+    /** 官方的一行安裝指令：macOS 用 shell，Windows 用 PowerShell（2026-11 從官網查證） */
     installCommand: string;
   }
 > = {
@@ -23,21 +24,27 @@ export const AGENTS: Record<
     start: "claude",
     resume: "claude --resume",
     install: "https://code.claude.com/docs/en/setup",
-    installCommand: "curl -fsSL https://claude.ai/install.sh | bash",
+    installCommand: isMac
+      ? "curl -fsSL https://claude.ai/install.sh | bash"
+      : "irm https://claude.ai/install.ps1 | iex",
   },
   agy: {
     label: "Antigravity",
     start: "agy",
     resume: "agy -c",
     install: "https://antigravity.google/docs/cli/install",
-    installCommand: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+    installCommand: isMac
+      ? "curl -fsSL https://antigravity.google/cli/install.sh | bash"
+      : "irm https://antigravity.google/cli/install.ps1 | iex",
   },
   codex: {
     label: "Codex",
     start: "codex",
     resume: "codex resume",
     install: "https://developers.openai.com/codex/cli/",
-    installCommand: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+    installCommand: isMac
+      ? "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
+      : "irm https://chatgpt.com/codex/install.ps1 | iex",
   },
 };
 

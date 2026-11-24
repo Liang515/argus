@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 use std::io::Cursor;
-use std::process::Command;
 
 use plist::Value;
 
@@ -89,9 +88,13 @@ pub fn theme_from_export(export: &[u8]) -> Option<BTreeMap<String, String>> {
 }
 
 /// 讀不到（沒用過「終端機」、或用的是沒存進設定檔的內建描述檔）時回傳 None。
+/// 「終端機」是 macOS 的 App，其他平台一律 None（前端也不顯示這個選項）。
 #[tauri::command]
 pub async fn terminal_app_theme() -> Option<BTreeMap<String, String>> {
-    let out = Command::new("/usr/bin/defaults")
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    let out = crate::sys::command("/usr/bin/defaults")
         .args(["export", "com.apple.Terminal", "-"])
         .output()
         .ok()?;

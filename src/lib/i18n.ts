@@ -1,3 +1,5 @@
+import { platformText } from "./platform";
+
 /** 介面語言：依系統偏好語言的順序，先遇到中文就用繁體中文，先遇到英文或都沒有就用英文。 */
 export type Lang = "zh-TW" | "en";
 
@@ -166,6 +168,7 @@ const zh = {
   "help.panels.themeKeys": "⌘K 搜尋「配色」",
   "help.panels.zoom": "放大／縮小終端機字體，⌘0 恢復預設",
   "help.panels.theme": "切換配色（Argus、Clear Dark、跟隨「終端機」）",
+  "help.panels.themeWin": "切換配色（Argus、Clear Dark）",
   "help.palette": "切換器裡",
   "help.palette.select": "選擇",
   "help.palette.open": "開啟",
@@ -176,6 +179,8 @@ const zh = {
   "help.typing.deleteLine": "刪除游標前的整行",
   "help.typing.selectAll": "全選終端機內容（可接著 ⌘C 複製）",
   "help.typing.newline": "在 Claude Code 輸入框換行（不送出）",
+  "help.typing.copy": "複製選取的文字（有選取時 Ctrl+C 也可以）",
+  "help.typing.paste": "貼上",
   "help.links": "連結",
   "help.links.openKeys": "⌘＋點擊路徑",
   "help.links.open": "開啟檔案：程式碼用 VS Code／Antigravity 並跳到行號，資料夾開在 Finder",
@@ -388,6 +393,7 @@ const en: Record<MessageKey, string> = {
   "help.panels.themeKeys": "⌘K, search “theme”",
   "help.panels.zoom": "Bigger / smaller terminal text; ⌘0 resets",
   "help.panels.theme": "Change the color theme (Argus, Clear Dark, match Terminal)",
+  "help.panels.themeWin": "Change the color theme (Argus, Clear Dark)",
   "help.palette": "In the switcher",
   "help.palette.select": "Select",
   "help.palette.open": "Open",
@@ -398,6 +404,8 @@ const en: Record<MessageKey, string> = {
   "help.typing.deleteLine": "Delete to line start",
   "help.typing.selectAll": "Select the whole terminal (then ⌘C to copy)",
   "help.typing.newline": "New line in Claude Code's input without sending",
+  "help.typing.copy": "Copy the selection (Ctrl+C works too while text is selected)",
+  "help.typing.paste": "Paste",
   "help.links": "Links",
   "help.links.openKeys": "⌘-click a path",
   "help.links.open": "Open the file: code in VS Code / Antigravity at the line, folders in Finder",
@@ -500,9 +508,17 @@ export function translate(
   return format(MESSAGES[language][key], vars);
 }
 
-/** 目前語言的文字；`{name}` 換成 vars 裡的值。 */
+/** 介面上直接寫的按鍵或 App 名稱（例如 "⌘B"、"Finder"），換成目前平台的說法。 */
+export function keys(text: string): string {
+  return platformText(text, lang);
+}
+
+/**
+ * 目前語言的文字；`{name}` 換成 vars 裡的值。
+ * Windows 上把 ⌘ 按鍵與 Finder 換成對應的說法（見 platform.ts）。
+ */
 export function t(key: MessageKey, vars?: Record<string, string | number>): string {
-  return translate(lang, key, vars);
+  return platformText(translate(lang, key, vars), lang);
 }
 
 /**

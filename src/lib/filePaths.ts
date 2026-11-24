@@ -20,7 +20,10 @@ const HAS_EXTENSION = /\.[A-Za-z][A-Za-z0-9]{0,9}$/;
 function looksLikePath(token: string): boolean {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(token)) return false; // 網址交給 WebLinksAddon
   if (token === "~" || token.startsWith("~/")) return true;
-  if (/^\.{1,2}\//.test(token)) return true;
+  if (/^\.{1,2}[\\/]/.test(token)) return true;
+  // Windows：C:\a\b、C:/a/b，或 src\a.ts 這種反斜線分隔的相對路徑
+  if (/^[A-Za-z]:[\\/]/.test(token)) return true;
+  if (token.includes("\\")) return /[A-Za-z0-9一-鿿]/.test(token);
   if (token.includes("/")) return /[A-Za-z0-9一-鿿]/.test(token);
   return HAS_EXTENSION.test(token) && /^[\w@+\-.一-鿿]+$/.test(token);
 }

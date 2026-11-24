@@ -1,7 +1,23 @@
 import { useEffect, useRef } from "react";
-import { lang, t } from "../lib/i18n";
+import { keys, lang, t } from "../lib/i18n";
+import { isMac } from "../lib/platform";
 
-const GROUPS: { title: string; items: [string, string][] }[] = [
+// macOS 的編輯鍵（⌘← 等）在 Windows 不適用；Windows 改列複製、貼上
+const TYPING: [string, string][] = isMac
+  ? [
+      ["⌘←  ⌘→", t("help.typing.lineEnds")],
+      ["⌥←  ⌥→", t("help.typing.words")],
+      ["⌘⌫", t("help.typing.deleteLine")],
+      ["⌘A", t("help.typing.selectAll")],
+      ["⇧↵", t("help.typing.newline")],
+    ]
+  : [
+      ["Ctrl+Shift+C", t("help.typing.copy")],
+      ["Ctrl+V  Ctrl+Shift+V", t("help.typing.paste")],
+      ["Shift+Enter", t("help.typing.newline")],
+    ];
+
+const RAW_GROUPS: { title: string; items: [string, string][] }[] = [
   {
     title: t("help.tabs"),
     items: [
@@ -21,7 +37,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
       ["⌘J", t("help.panels.recap")],
       ["⌘B", t("help.panels.sidebar")],
       ["⌘/", t("help.panels.help")],
-      [t("help.panels.themeKeys"), t("help.panels.theme")],
+      [t("help.panels.themeKeys"), t(isMac ? "help.panels.theme" : "help.panels.themeWin")],
       ["⌘+  ⌘−", t("help.panels.zoom")],
     ],
   },
@@ -35,13 +51,7 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
   },
   {
     title: t("help.typing"),
-    items: [
-      ["⌘←  ⌘→", t("help.typing.lineEnds")],
-      ["⌥←  ⌥→", t("help.typing.words")],
-      ["⌘⌫", t("help.typing.deleteLine")],
-      ["⌘A", t("help.typing.selectAll")],
-      ["⇧↵", t("help.typing.newline")],
-    ],
+    items: TYPING,
   },
   {
     title: t("help.links"),
@@ -59,6 +69,11 @@ const GROUPS: { title: string; items: [string, string][] }[] = [
     ],
   },
 ];
+
+const GROUPS = RAW_GROUPS.map((g) => ({
+  ...g,
+  items: g.items.map(([k, desc]): [string, string] => [keys(k), desc]),
+}));
 
 export function ShortcutHelp({ onClose }: { onClose: () => void }) {
   const panelRef = useRef<HTMLDivElement>(null);
