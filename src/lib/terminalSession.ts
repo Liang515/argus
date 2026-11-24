@@ -90,7 +90,12 @@ export class TerminalSession {
     readonly id: string,
     readonly cwd: string,
     private readonly onStatus: (id: string, status: ClaudeStatus, agent: AgentId) => void,
-    private readonly onActivity: (id: string, event: ActivityEvent) => void = () => {},
+    /** agent：送出這筆活動的 agent（hook 先送燈號再送活動，收到時已經知道是誰） */
+    private readonly onActivity: (
+      id: string,
+      event: ActivityEvent,
+      agent: AgentId,
+    ) => void = () => {},
   ) {
     this.element.style.height = "100%";
     this.term = new Terminal({
@@ -121,7 +126,7 @@ export class TerminalSession {
       // 側欄「活動」的摘要（hook 和燈號一起送）
       if (data.startsWith(ACTIVITY_TAG)) {
         const event = parseActivity(data.slice(ACTIVITY_TAG.length));
-        if (event) this.onActivity(this.id, event);
+        if (event) this.onActivity(this.id, event, this.agent);
         return true;
       }
       const parsed = parseArgusOsc(data);

@@ -199,6 +199,12 @@ export function RecapPanel({
                       recap.prompt ? "text-deck-text/85" : "text-deck-muted italic"
                     }`}
                   >
+                    {/* 指令是別的 agent 收到的（例如同專案先用 agy、後來開 Claude），標出是誰 */}
+                    {recap.prompt && recap.promptAgent && recap.promptAgent !== agent && (
+                      <span className="text-deck-muted">
+                        {t("recap.promptBy", { agent: AGENTS[recap.promptAgent].label })}
+                      </span>
+                    )}
                     {recap.prompt ?? t("recap.noPrompt")}
                   </p>
                   <Facts recap={recap} uncommitted={uncommitted} closed={tabId === null} />

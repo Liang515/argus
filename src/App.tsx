@@ -206,12 +206,12 @@ export default function App() {
           setRunningAgents((prev) => ({ ...prev, [id]: agent }));
           setRecaps((prev) => noteStatus(prev, tab.path, status, agent, Date.now()));
         },
-        (id, event) => {
+        (id, event, agent) => {
           setActivities((prev) => ({
             ...prev,
             [id]: applyActivity(prev[id] ?? EMPTY_ACTIVITY, event, Date.now()),
           }));
-          setRecaps((prev) => noteActivity(prev, tab.path, event, Date.now()));
+          setRecaps((prev) => noteActivity(prev, tab.path, event, Date.now(), agent));
         },
       );
       sessions.current.set(tab.id, session);
