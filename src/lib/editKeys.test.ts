@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { editKey, handleEditKeyEvent } from "./editKeys";
 
+// 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
+vi.mock("./platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./platform")>()),
+  platform: "mac",
+  isMac: true,
+}));
+
 const key = (
   code: string,
   mods: Partial<Record<"meta" | "alt" | "ctrl" | "shift", boolean>> = {},

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   activeAfterClose,
   dropIndex,
@@ -12,6 +12,13 @@ import {
   tabLabels,
   tabName,
 } from "./tabs";
+
+// 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
+vi.mock("./platform", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./platform")>()),
+  platform: "mac",
+  isMac: true,
+}));
 
 const key = (k: string, extra: Partial<KeyboardEvent> = {}) => ({
   metaKey: true,
