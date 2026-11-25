@@ -85,3 +85,33 @@ export function lineText(cells: CellLike[]): { text: string; col: number[]; widt
   });
   return { text, col, width };
 }
+
+/**
+ * 終端機程式用 OSC 8 標的超連結要打開什麼：http(s) 網址，或 `file://` 指向的本機路徑。
+ * 其他協定（以及別台主機的 file://）一律不開。
+ */
+export function hyperlinkTarget(
+  uri: string,
+  os: Platform = platform,
+): { kind: "url"; url: string } | { kind: "path"; path: string } | null {
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    return null;
+  }
+  if (url.protocol === "http:" || url.protocol === "https:") return { kind: "url", url: uri };
+  if (url.protocol !== "file:" || (url.hostname && url.hostname !== "localhost")) return null;
+  let path: string;
+  try {
+    path = decodeURIComponent(url.pathname);
+  } catch {
+    return null;
+  }
+  // Windows：file:///C:/a/b → C:\a\b
+  if (os === "windows") {
+    if (!/^\/[A-Za-z]:\//.test(path)) return null;
+    path = path.slice(1).replace(/\//g, "\\");
+  }
+  return path ? { kind: "path", path } : null;
+}

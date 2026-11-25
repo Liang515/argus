@@ -10,7 +10,7 @@ import { type ActivityEvent, parseActivity } from "./activity";
 import type { AgentId } from "./agents";
 import { parseOsc52 } from "./clipboard";
 import { handleEditKeyEvent } from "./editKeys";
-import { findPathCandidates, lineText } from "./filePaths";
+import { findPathCandidates, hyperlinkTarget, lineText } from "./filePaths";
 import { DEFAULT_FONT_SIZE } from "./fontSize";
 import { t } from "./i18n";
 import { isMac } from "./platform";
@@ -110,6 +110,18 @@ export class TerminalSession {
       cursorBlink: false,
       macOptionIsMeta: true,
       theme: currentTheme,
+      // 程式用 OSC 8 標的超連結（agy 等）：xterm 預設會跳瀏覽器確認框再 window.open，
+      // 在 App 裡打不開，所以自己處理；和其他連結一樣要 ⌘（Windows：Ctrl）＋點擊
+      linkHandler: {
+        allowNonHttpProtocols: true,
+        activate: (event, uri) => {
+          if (!linkModifier(event)) return;
+          const target = hyperlinkTarget(uri);
+          if (target?.kind === "url") void openUrl(target.url).catch(() => {});
+          else if (target?.kind === "path")
+            void openPath(target.path, event.altKey).catch(() => {});
+        },
+      },
     });
     this.term.loadAddon(this.fitAddon);
     // 網址和檔案路徑一樣要 ⌘＋點擊才開，一般點擊留給選取文字；只開 http(s)
