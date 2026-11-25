@@ -142,6 +142,12 @@ pub fn hook_summary_main() {
     activity::hook_summary_main();
 }
 
+/// Windows：stdin 是不是管線（見 main.rs 的舊版 Claude Code 判斷）。
+#[cfg(windows)]
+pub fn stdin_is_pipe() -> bool {
+    sys::stdin_is_pipe()
+}
+
 /// `argus --hook <狀態> [agent]`：Windows 的狀態 hook，送給執行中的 Argus 後結束。
 pub fn hook_main(args: &[String]) {
     hook::hook_main(args);

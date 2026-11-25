@@ -11,12 +11,10 @@ fn main() {
         _ => {}
     }
     // 舊版 Claude Code 不認得 hooks.json 的 args，會不帶參數執行 argus.exe：
-    // 在 Argus 分頁裡、stdin 又不是終端機（hook 會把資料接到 stdin）時不開新視窗
-    if cfg!(windows) && args.is_empty() && std::env::var_os("ARGUS_TAB_ID").is_some() {
-        use std::io::IsTerminal;
-        if !std::io::stdin().is_terminal() {
-            return;
-        }
+    // 在 Argus 分頁裡、stdin 又是管線（hook 會把資料接到 stdin）時不開新視窗
+    #[cfg(windows)]
+    if args.is_empty() && std::env::var_os("ARGUS_TAB_ID").is_some() && argus_lib::stdin_is_pipe() {
+        return;
     }
     argus_lib::run()
 }

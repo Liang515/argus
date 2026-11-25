@@ -134,15 +134,19 @@ fn shell(_hooks: bool) -> (String, Vec<String>) {
 }
 
 /// Windows 版的 `claude` 包裝（同 zsh 的 `function claude`）：在使用者的 profile 之後定義，
-/// 執行 claude 時自動帶上狀態回報 hooks。使用者的 alias 會蓋過函式，所以先移除。
+/// 執行 claude 時自動帶上狀態回報 hooks。使用者的 alias 會蓋過函式，所以先移除
+/// （`-ErrorAction Ignore`：沒有 alias 時也不在 `$Error` 留紀錄）。
 /// 找真正的 claude 時只看執行檔（claude.exe、npm 的 claude.cmd；不然會找到這個函式自己，
-/// .ps1 也可能被執行原則擋下）。不能有雙引號：整段是一個命令列參數。
+/// .ps1 也可能被執行原則擋下）。PowerShell 函式不會把管線輸入交給裡面的程式，
+/// `git diff | claude -p` 要自己轉交；沒有管線時不能轉，互動畫面要用原本的輸入。
+/// 不能有雙引號：整段是一個命令列參數。
 #[cfg(windows)]
-const POWERSHELL_CLAUDE: &str = "Remove-Item Alias:claude -Force -ErrorAction SilentlyContinue; \
+const POWERSHELL_CLAUDE: &str = "Remove-Item Alias:claude -Force -ErrorAction Ignore; \
 function global:claude { \
-$c = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; \
+$c = Get-Command claude -CommandType Application -ErrorAction Ignore | Select-Object -First 1; \
 if (-not $c) { Write-Error 'claude: command not found'; return }; \
-& $c.Source --settings $env:ARGUS_HOOKS @args }";
+if ($MyInvocation.ExpectingInput) { $input | & $c.Source --settings $env:ARGUS_HOOKS @args } \
+else { & $c.Source --settings $env:ARGUS_HOOKS @args } }";
 
 /// Windows：有裝 PowerShell 7（pwsh）就用它，否則用系統內建的 Windows PowerShell。
 #[cfg(windows)]
@@ -458,14 +462,21 @@ mod tests {
     #[test]
     fn powershell_wrapper_adds_settings() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("claude.cmd"), "@echo ARGS:%*\r\n").unwrap();
+        std::fs::write(
+            dir.path().join("claude.cmd"),
+            // 印出參數；有管線輸入時逐行印出（沒有管線時 stdin 是空的，more 馬上結束）
+            "@echo ARGS:%*\r\n@for /f \"delims=\" %%l in ('more') do @echo STDIN:%%l\r\n",
+        )
+        .unwrap();
         let path = format!(
             "{};{}",
             dir.path().display(),
             std::env::var("PATH").unwrap()
         );
-        let script =
-            format!("Set-Alias claude Get-Date; {POWERSHELL_CLAUDE}; claude -c 'two words'");
+        let script = format!(
+            "Set-Alias claude Get-Date; {POWERSHELL_CLAUDE}; claude -c 'two words'; \
+             'piped-line' | claude -p; Write-Output ('errors:' + $Error.Count)"
+        );
         let out = std::process::Command::new("powershell.exe")
             .args(["-NoLogo", "-NoProfile", "-Command", &script])
             .env("PATH", path)
@@ -473,11 +484,14 @@ mod tests {
             .output()
             .unwrap();
         let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
         assert!(
             stdout.contains(r#"ARGS:--settings C:\x\hooks.json -c "two words""#),
-            "{stdout}\n{}",
-            String::from_utf8_lossy(&out.stderr)
+            "{stdout}\n{stderr}"
         );
+        // 管線輸入要送進 claude
+        assert!(stdout.contains("STDIN:piped-line"), "{stdout}\n{stderr}");
+        assert!(stdout.contains("errors:0"), "{stdout}\n{stderr}");
     }
 
     #[cfg(unix)]

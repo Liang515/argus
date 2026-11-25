@@ -155,20 +155,38 @@ pub fn serve(app: tauri::AppHandle, name: String) {
     });
 }
 
-/// 在背景接收 hook 的連線，每則合格的訊息交給 `on_message`。
+/// 在背景接收 hook 的連線，每則合格的訊息依連線順序交給 `on_message`。
+///
+/// 每個連線各自讀取（慢的連線不擋住下一個連線），但結果照連線順序處理：
+/// 緊接著的兩個 hook（例如 PostToolUse 後馬上 Stop）不會反過來，燈號才不會停在舊狀態。
 #[cfg(windows)]
-fn listen(name: String, on_message: impl Fn(HookMessage) + Send + Sync + 'static) {
+fn listen(name: String, on_message: impl Fn(HookMessage) + Send + 'static) {
     use tokio::io::AsyncReadExt;
-    use tokio::net::windows::named_pipe::ServerOptions;
+    use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+    use tokio::sync::{mpsc, oneshot};
 
-    let on_message = std::sync::Arc::new(on_message);
-    tauri::async_runtime::spawn(async move {
-        // first_pipe_instance：名稱已被別的程式佔用就不要接（避免收到假的訊息或被搶走）
-        let mut server = match ServerOptions::new()
-            .first_pipe_instance(true)
+    // 只收不送（PIPE_ACCESS_INBOUND）：連線端一定要有寫入權限，預設權限下只有目前使用者與管理員
+    let create = |first: bool| -> std::io::Result<NamedPipeServer> {
+        ServerOptions::new()
+            .first_pipe_instance(first)
+            .access_outbound(false)
             .reject_remote_clients(true)
             .create(&name)
-        {
+    };
+
+    let (order_tx, mut order_rx) = mpsc::unbounded_channel::<oneshot::Receiver<HookMessage>>();
+    tauri::async_runtime::spawn(async move {
+        while let Some(result) = order_rx.recv().await {
+            // 讀取失敗或格式不對的連線沒有訊息，略過
+            if let Ok(message) = result.await {
+                on_message(message);
+            }
+        }
+    });
+
+    tauri::async_runtime::spawn(async move {
+        // first_pipe_instance：名稱已被別的程式佔用就不要接（避免收到假的訊息或被搶走）
+        let mut server = match create(true) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("狀態回報 pipe 建立失敗：{e}");
@@ -179,10 +197,7 @@ fn listen(name: String, on_message: impl Fn(HookMessage) + Send + Sync + 'static
             let connected = server.connect().await.is_ok();
             let client = server;
             // 每個連線用掉一個執行個體，先開好下一個再處理；連線失敗的那個直接丟掉
-            server = match ServerOptions::new()
-                .reject_remote_clients(true)
-                .create(&name)
-            {
+            server = match create(false) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!("狀態回報 pipe 建立失敗：{e}");
@@ -192,7 +207,10 @@ fn listen(name: String, on_message: impl Fn(HookMessage) + Send + Sync + 'static
             if !connected {
                 continue;
             }
-            let on_message = on_message.clone();
+            let (tx, rx) = oneshot::channel();
+            if order_tx.send(rx).is_err() {
+                return;
+            }
             tauri::async_runtime::spawn(async move {
                 let mut buf = Vec::new();
                 let mut limited = client.take(MAX_MESSAGE as u64 + 1);
@@ -203,7 +221,7 @@ fn listen(name: String, on_message: impl Fn(HookMessage) + Send + Sync + 'static
                     .is_ok_and(|r| r.is_ok())
                     && let Some(message) = parse_message(&buf)
                 {
-                    on_message(message);
+                    let _ = tx.send(message);
                 }
             });
         }
@@ -268,9 +286,8 @@ mod tests {
         use std::time::{Duration, Instant};
         let name = new_pipe_name();
         let (tx, rx) = mpsc::channel();
-        let tx = std::sync::Mutex::new(tx);
         listen(name.clone(), move |m| {
-            let _ = tx.lock().unwrap().send(m);
+            let _ = tx.send(m);
         });
         let message = HookMessage {
             id: "tab-1".into(),
@@ -289,6 +306,26 @@ mod tests {
         };
         assert_eq!(received, message);
         assert_eq!(received.osc, vec!["argus;needs-input;agy"]);
+
+        // 連續送出的訊息照順序到達
+        let states = ["running", "done", "running", "needs-input", "done", "off"];
+        for (i, state) in states.iter().enumerate() {
+            let m = HookMessage {
+                id: format!("seq-{i}"),
+                osc: vec![format!("argus;{state}")],
+            };
+            send(&name, &serde_json::to_vec(&m).unwrap());
+        }
+        // 前面重送的訊息可能還有幾則在路上，只看這一輪的
+        let mut got = Vec::new();
+        while got.len() < states.len() {
+            let id = rx.recv_timeout(Duration::from_secs(5)).unwrap().id;
+            if id.starts_with("seq-") {
+                got.push(id);
+            }
+        }
+        let want: Vec<String> = (0..states.len()).map(|i| format!("seq-{i}")).collect();
+        assert_eq!(got, want);
     }
 
     #[test]

@@ -165,7 +165,7 @@ pub fn install_agy_plugin_with_bin(
 }
 
 /// Windows：agy 外掛直接呼叫 `argus.exe --hook <狀態> agy`（印出 agy 要的 `{}`）。
-/// agy 用哪個 shell 執行指令沒有文件，`exe` 要在 cmd、PowerShell、bash 都能用（見 [`portable_exe`]）。
+/// agy 用哪個 shell 執行指令沒有文件，`exe` 要在 cmd 與 PowerShell 都能用（見 [`portable_exe`]）。
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn install_agy_plugin_exe(gemini_config: &Path, exe: &str) -> io::Result<bool> {
     if !gemini_config.is_dir() {
@@ -183,16 +183,19 @@ pub fn install_agy_plugin_exe(gemini_config: &Path, exe: &str) -> io::Result<boo
     Ok(true)
 }
 
-/// 執行檔路徑寫成三種 shell 都看得懂的樣子：斜線（bash 會吃掉反斜線）、不加引號
-/// （PowerShell 要 `&` 才會執行加了引號的路徑）。路徑有空白時用 8.3 短檔名，
-/// 拿不到短檔名才加雙引號（cmd、bash 可以，PowerShell 不行）。
+/// 執行檔路徑寫成 cmd 與 PowerShell 都看得懂的樣子：反斜線（cmd 會把 `/` 當成參數開關）、
+/// 不加引號（PowerShell 要 `&` 才會執行加了引號的路徑）。呼叫端先換成 8.3 短檔名去掉空白；
+/// 還有空白或 shell 特殊字元（`&`、`(`、`%`…）時只能加雙引號（cmd 可以，PowerShell 不行）。
+/// Git Bash 會吃掉反斜線，不支援。
 #[cfg_attr(not(windows), allow(dead_code))]
 fn portable_exe(path: &str) -> String {
-    let path = path.replace('\\', "/");
-    if path.contains(' ') {
-        format!("\"{path}\"")
+    let safe = path
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '\\' | ':' | '.' | '_' | '-' | '~'));
+    if safe {
+        path.to_string()
     } else {
-        path
+        format!("\"{path}\"")
     }
 }
 
@@ -342,7 +345,8 @@ pub fn install_with_bin(dir: &Path, argus_bin: Option<&Path>) -> io::Result<Inte
 pub fn install(pipe: String) -> io::Result<Integration> {
     let home =
         dirs::home_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "找不到家目錄"))?;
-    let exe = std::env::current_exe()?;
+    // 很長的路徑可能帶 `\\?\` 前綴，寫進設定檔前去掉
+    let exe = dunce::simplified(&std::env::current_exe()?).to_path_buf();
     let dir = home.join(".argus");
     fs::create_dir_all(&dir)?;
     let short = crate::sys::short_path(&exe);
@@ -391,35 +395,38 @@ mod portable_tests {
     }
 
     #[test]
-    fn portable_exe_uses_forward_slashes_and_quotes_only_spaces() {
+    fn portable_exe_is_bare_only_when_every_character_is_safe() {
         assert_eq!(
-            portable_exe(r"C:\Users\a\AppData\Local\Argus\argus.exe"),
-            "C:/Users/a/AppData/Local/Argus/argus.exe"
+            portable_exe(r"C:\Users\ARGUS~1\AppData\Local\Argus\argus.exe"),
+            r"C:\Users\ARGUS~1\AppData\Local\Argus\argus.exe"
         );
-        assert_eq!(
-            portable_exe(r"C:\My Apps\argus.exe"),
-            "\"C:/My Apps/argus.exe\""
-        );
+        for odd in [
+            r"C:\My Apps\argus.exe",
+            r"D:\A&B\argus.exe",
+            r"D:\x(1)\argus.exe",
+        ] {
+            assert_eq!(portable_exe(odd), format!("\"{odd}\""));
+        }
     }
 
     #[test]
     fn windows_agy_plugin_calls_the_exe() {
         let dir = tempfile::tempdir().unwrap();
         let config = dir.path().join("config");
-        assert!(!install_agy_plugin_exe(&config, "C:/a/argus.exe").unwrap());
+        assert!(!install_agy_plugin_exe(&config, r"C:\a\argus.exe").unwrap());
         fs::create_dir_all(config.join("plugins/argus")).unwrap();
         fs::write(config.join("plugins/argus/argus-hook.sh"), "old").unwrap();
-        assert!(install_agy_plugin_exe(&config, "C:/a/argus.exe").unwrap());
+        assert!(install_agy_plugin_exe(&config, r"C:\a\argus.exe").unwrap());
         let plugin = config.join("plugins/argus");
         let hooks: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(plugin.join("hooks.json")).unwrap()).unwrap();
         assert_eq!(
             hooks["argus-status"]["Stop"][0]["command"],
-            "C:/a/argus.exe --hook done agy"
+            r"C:\a\argus.exe --hook done agy"
         );
         assert_eq!(
             hooks["argus-status"]["PostToolUse"][0]["hooks"][0]["command"],
-            "C:/a/argus.exe --hook running agy"
+            r"C:\a\argus.exe --hook running agy"
         );
         assert!(!plugin.join("argus-hook.sh").exists());
     }
