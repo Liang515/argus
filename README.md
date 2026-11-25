@@ -70,7 +70,7 @@ Download the latest `Argus_*_x64-setup.exe` from [Releases](https://github.com/L
 
 The Windows version runs PowerShell (PowerShell 7 if installed) in each tab and uses Ctrl+Shift shortcuts like Windows Terminal: Ctrl+Shift+T new tab, Ctrl+Shift+K switcher, Ctrl+Shift+J recent work, Ctrl+Tab next tab, Ctrl+1–9 jump to a tab, Ctrl+Shift+C / Ctrl+V copy and paste, Ctrl+click to open a path. Press Ctrl+Shift+/ for all of them.
 
-Not on Windows yet: the running and done status lights, the Activity panel and the prompts and files in Recent work (they need the agent hooks, coming next). The "waiting for you" light works from screen text, and the "match Terminal" theme is macOS only.
+Status lights, the Activity panel and Recent work work as on macOS: when you start `claude` or `agy` in an Argus tab, their hooks report back to Argus through `argus.exe`. The "match Terminal" theme is macOS only.
 
 Requirements:
 
@@ -87,7 +87,7 @@ Argus never edits your own shell or agent settings. It writes only:
 - `CLAUDE.md` in a project, only when you click "add handoff rules" in the sidebar.
 - A sibling folder `<project>-wt-N`, only when you open a tab as a new Git worktree.
 
-On Windows, Argus only writes `%USERPROFILE%\.argus\` (saved tabs, recent work and custom agents); there is no status hook yet.
+On Windows the same places are under `%USERPROFILE%`. Instead of the shell hook and zsh wrapper, `.argus\hooks.json` points the hooks at `argus.exe`, and each PowerShell tab defines a `claude` function that adds them.
 
 ## Build from source
 
