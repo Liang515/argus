@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { findPathCandidates, lineText } from "./filePaths";
+import { findPathCandidates, hyperlinkTarget, lineText } from "./filePaths";
 
 // 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
 vi.mock("./platform", async (importOriginal) => ({
@@ -68,5 +68,33 @@ describe("不當成路徑的", () => {
   });
   it("macOS 不把反斜線字串（\\n、正規表示式）當路徑", () => {
     expect(findPathCandidates("printf a\\nb and C:\\x\\y", "mac")).toEqual([]);
+  });
+});
+
+describe("hyperlinkTarget（OSC 8 超連結）", () => {
+  it("http(s) 網址照原樣打開", () => {
+    expect(hyperlinkTarget("https://2048-drab.vercel.app")).toEqual({
+      kind: "url",
+      url: "https://2048-drab.vercel.app",
+    });
+  });
+  it("file:// 轉成本機路徑（解開 %20 等編碼）", () => {
+    expect(hyperlinkTarget("file:///Users/a/my%20app/x.ts")).toEqual({
+      kind: "path",
+      path: "/Users/a/my app/x.ts",
+    });
+    expect(hyperlinkTarget("file://localhost/tmp/x")).toEqual({ kind: "path", path: "/tmp/x" });
+    expect(hyperlinkTarget("file:///C:/Users/a/x.ts", "windows")).toEqual({
+      kind: "path",
+      path: "C:\\Users\\a\\x.ts",
+    });
+  });
+  it("其他協定、別台主機與壞掉的網址都不開", () => {
+    expect(hyperlinkTarget("javascript:alert(1)")).toBeNull();
+    expect(hyperlinkTarget("vscode://file/x")).toBeNull();
+    expect(hyperlinkTarget("file://server/share/x")).toBeNull();
+    expect(hyperlinkTarget("file:///%E0%A4%A")).toBeNull();
+    expect(hyperlinkTarget("not a url")).toBeNull();
+    expect(hyperlinkTarget("file:///tmp/x", "windows")).toBeNull();
   });
 });
