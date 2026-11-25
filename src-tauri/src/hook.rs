@@ -150,9 +150,18 @@ pub fn new_pipe_name() -> String {
 #[cfg(windows)]
 pub fn serve(app: tauri::AppHandle, name: String) {
     use tauri::Emitter;
+    listen(name, move |message| {
+        let _ = app.emit("argus-hook", message);
+    });
+}
+
+/// 在背景接收 hook 的連線，每則合格的訊息交給 `on_message`。
+#[cfg(windows)]
+fn listen(name: String, on_message: impl Fn(HookMessage) + Send + Sync + 'static) {
     use tokio::io::AsyncReadExt;
     use tokio::net::windows::named_pipe::ServerOptions;
 
+    let on_message = std::sync::Arc::new(on_message);
     tauri::async_runtime::spawn(async move {
         // first_pipe_instance：名稱已被別的程式佔用就不要接（避免收到假的訊息或被搶走）
         let mut server = match ServerOptions::new()
@@ -183,7 +192,7 @@ pub fn serve(app: tauri::AppHandle, name: String) {
             if !connected {
                 continue;
             }
-            let app = app.clone();
+            let on_message = on_message.clone();
             tauri::async_runtime::spawn(async move {
                 let mut buf = Vec::new();
                 let mut limited = client.take(MAX_MESSAGE as u64 + 1);
@@ -194,7 +203,7 @@ pub fn serve(app: tauri::AppHandle, name: String) {
                     .is_ok_and(|r| r.is_ok())
                     && let Some(message) = parse_message(&buf)
                 {
-                    let _ = app.emit("argus-hook", message);
+                    on_message(message);
                 }
             });
         }
@@ -249,6 +258,37 @@ mod tests {
         assert_eq!(parse_args(&args(&[])), None);
         assert_eq!(parse_args(&args(&["running;x"])), None);
         assert_eq!(parse_args(&args(&["running", "codex"])), None);
+    }
+
+    /// 真的開 named pipe：hook 端送出的訊息，Argus 端依序收到；格式不對的丟掉。
+    #[cfg(windows)]
+    #[test]
+    fn messages_travel_through_the_pipe() {
+        use std::sync::mpsc;
+        use std::time::{Duration, Instant};
+        let name = new_pipe_name();
+        let (tx, rx) = mpsc::channel();
+        let tx = std::sync::Mutex::new(tx);
+        listen(name.clone(), move |m| {
+            let _ = tx.lock().unwrap().send(m);
+        });
+        let message = HookMessage {
+            id: "tab-1".into(),
+            osc: osc_messages("notify", Some("agy"), r#"{"notification_type":"x"}"#),
+        };
+        let bytes = serde_json::to_vec(&message).unwrap();
+        // pipe 在背景建立，建好之前送出會直接失敗（和 Argus 沒開時一樣），所以重送到收到為止
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let received = loop {
+            send(&name, b"garbage");
+            send(&name, &bytes);
+            if let Ok(m) = rx.recv_timeout(Duration::from_millis(200)) {
+                break m;
+            }
+            assert!(Instant::now() < deadline, "pipe 沒收到訊息");
+        };
+        assert_eq!(received, message);
+        assert_eq!(received.osc, vec!["argus;needs-input;agy"]);
     }
 
     #[test]
