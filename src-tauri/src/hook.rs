@@ -166,7 +166,7 @@ fn listen(name: String, on_message: impl Fn(HookMessage) + Send + 'static) {
     use tokio::sync::{mpsc, oneshot};
 
     // 只收不送（PIPE_ACCESS_INBOUND）：連線端一定要有寫入權限，預設權限下只有目前使用者與管理員
-    let create = |first: bool| -> std::io::Result<NamedPipeServer> {
+    let create = move |first: bool| -> std::io::Result<NamedPipeServer> {
         ServerOptions::new()
             .first_pipe_instance(first)
             .access_outbound(false)
