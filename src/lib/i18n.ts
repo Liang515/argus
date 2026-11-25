@@ -207,7 +207,6 @@ const zh = {
   "err.no_home": "找不到家目錄",
   "err.no_worktree_name": "找不到可用的 worktree 名稱",
   "recap.title": "近況",
-  "recap.buttonTitle": "近況：各專案最近做了什麼 (⌘J)",
   "recap.placeholder": "搜尋專案或做過的事",
   "recap.empty": "還沒有紀錄。agent 在專案裡動作後，這裡會列出最後一句指令和改過的檔案。",
   "recap.noMatch": "沒有符合的專案",
@@ -435,7 +434,6 @@ const en: Record<MessageKey, string> = {
   "err.no_home": "Home folder not found",
   "err.no_worktree_name": "No free worktree name is left",
   "recap.title": "Recent work",
-  "recap.buttonTitle": "Recent work across projects (⌘J)",
   "recap.placeholder": "Search projects or what you did",
   "recap.empty":
     "Nothing yet. Once an agent works in a project, its last prompt and edited files show up here.",

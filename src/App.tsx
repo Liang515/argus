@@ -947,7 +947,6 @@ export default function App() {
         onClose={(id) => void closeTab(id)}
         onAdd={() => void addTab()}
         onHelp={() => showOverlay("help")}
-        onRecap={() => showOverlay("recap")}
         onAgent={(intent, agent) => void agentAction(intent, agent)}
         onInstallAgent={installAgent}
         onAgentMenuOpen={onAgentMenuOpen}
