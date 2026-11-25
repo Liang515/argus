@@ -10,7 +10,7 @@ import { type ActivityEvent, parseActivity } from "./activity";
 import type { AgentId } from "./agents";
 import { parseOsc52 } from "./clipboard";
 import { handleEditKeyEvent } from "./editKeys";
-import { findPathCandidates, hyperlinkTarget, lineText } from "./filePaths";
+import { findPathCandidates, hyperlinkTarget, lineText, pickExisting } from "./filePaths";
 import { DEFAULT_FONT_SIZE } from "./fontSize";
 import { t } from "./i18n";
 import { isMac } from "./platform";
@@ -337,9 +337,14 @@ export class TerminalSession {
       candidates: found.map((c) => c.path),
     }).catch(() => []);
     const links: ILink[] = [];
-    found.forEach((c, i) => {
+    // 有空白的檔名會同時有長短幾個候選，重疊的只留最長的存在路徑
+    for (const i of pickExisting(
+      found,
+      found.map((_, i) => Boolean(resolved[i])),
+    )) {
+      const c = found[i];
       const target = resolved[i];
-      if (!target) return;
+      if (!target) continue;
       const last = c.end - 1;
       links.push({
         range: { start: { x: col[c.start] + 1, y }, end: { x: col[last] + width[last], y } },
@@ -350,7 +355,7 @@ export class TerminalSession {
           void openPath(target.path, event.altKey, c.line, c.column).catch(() => {});
         },
       });
-    });
+    }
     return links.length > 0 ? links : undefined;
   }
 

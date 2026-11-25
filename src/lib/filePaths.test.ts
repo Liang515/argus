@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { findPathCandidates, hyperlinkTarget, lineText } from "./filePaths";
+import { findPathCandidates, hyperlinkTarget, lineText, pickExisting } from "./filePaths";
 
 // 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
 vi.mock("./platform", async (importOriginal) => ({
@@ -96,5 +96,48 @@ describe("hyperlinkTarget（OSC 8 超連結）", () => {
     expect(hyperlinkTarget("file:///%E0%A4%A")).toBeNull();
     expect(hyperlinkTarget("not a url")).toBeNull();
     expect(hyperlinkTarget("file:///tmp/x", "windows")).toBeNull();
+  });
+});
+
+describe("有空白或括號的檔名", () => {
+  const line =
+    "  ~/Documents/slides/sources/261125-080-voice-qa/261125 080語音質檢 會議記錄（富邦版）.pdf";
+  const full =
+    "~/Documents/slides/sources/261125-080-voice-qa/261125 080語音質檢 會議記錄（富邦版）.pdf";
+
+  it("從路徑開頭往後接，結尾有副檔名的都列為候選", () => {
+    const paths = findPathCandidates(line).map((c) => c.path);
+    expect(paths).toContain("~/Documents/slides/sources/261125-080-voice-qa/261125");
+    expect(paths).toContain(full);
+  });
+
+  it("英文檔名的空白與半形括號、行號也可以", () => {
+    const paths = findPathCandidates("see /tmp/My Notes (1).md:12 for details").map((c) => [
+      c.path,
+      c.line,
+    ]);
+    expect(paths).toContainEqual(["/tmp/My Notes (1).md", 12]);
+  });
+
+  it("不是路徑開頭的片段不往後接；遇到引號或逗號就停", () => {
+    expect(findPathCandidates("README.md and notes.txt").map((c) => c.path)).toEqual([
+      "README.md",
+      "notes.txt",
+    ]);
+    const paths = findPathCandidates('"/tmp/a b", other.txt').map((c) => c.path);
+    expect(paths).not.toContain('/tmp/a b", other.txt');
+    expect(paths.every((p) => !p.includes(","))).toBe(true);
+  });
+
+  it("重疊的候選只留最長的存在路徑，不重疊的都留", () => {
+    const found = findPathCandidates(`${line} 和 ./x.ts`);
+    const exists = found.map((c) => c.path === full || c.path === "./x.ts");
+    const kept = pickExisting(found, exists).map((i) => found[i].path);
+    expect(kept).toEqual([full, "./x.ts"]);
+    // 長的不存在時，短的照常
+    const short = found.map((c) => c.path.endsWith("/261125"));
+    expect(pickExisting(found, short).map((i) => found[i].path)).toEqual([
+      "~/Documents/slides/sources/261125-080-voice-qa/261125",
+    ]);
   });
 });
