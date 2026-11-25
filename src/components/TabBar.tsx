@@ -1,4 +1,4 @@
-import { ArrowUpCircle, ChevronDown, GitBranch, History, Keyboard, Plus, X } from "lucide-react";
+import { ArrowUpCircle, ChevronDown, GitBranch, Keyboard, Plus, Radar, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import type { CustomAgent } from "../lib/customAgents";
@@ -318,7 +318,7 @@ export function TabBar({
         onClick={onRecap}
         className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-deck-muted hover:bg-deck-hover hover:text-deck-text"
       >
-        <History size={15} />
+        <Radar size={15} />
       </button>
       <button
         type="button"
