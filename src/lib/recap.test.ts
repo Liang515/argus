@@ -27,7 +27,7 @@ describe("noteActivity", () => {
     expect(r[0]).toEqual({ path: "/a", at: 5, prompt: "修 bug", files: ["/a/x.ts", "/a/y.ts"] });
   });
 
-  it("新的指令清掉上一輪的檔案；agy 同一輪重送同一句不清", () => {
+  it("新的指令先留著上一輪的檔案（標成上一輪），這輪改了檔才換掉；agy 同一輪重送同一句不動", () => {
     const base = run([
       ["/a", 1, { k: "prompt", text: "一" }],
       ["/a", 2, { k: "start", verb: "edit", target: "x", path: "/a/x" }],
@@ -35,10 +35,34 @@ describe("noteActivity", () => {
     expect(run([["/a", 3, { k: "prompt", text: "一", dedup: true }]], base)[0].files).toEqual([
       "/a/x",
     ]);
-    expect(run([["/a", 3, { k: "prompt", text: "二" }]], base)[0]).toMatchObject({
-      prompt: "二",
-      files: [],
-    });
+    const asked = run([["/a", 3, { k: "prompt", text: "二" }]], base);
+    expect(asked[0]).toMatchObject({ prompt: "二", files: ["/a/x"], filesEarlier: true });
+    // 這輪第一次改檔：清單換成這輪的，之後照常累積
+    const edited = run(
+      [
+        ["/a", 4, { k: "start", verb: "edit", target: "y", path: "/a/y" }],
+        ["/a", 5, { k: "done", verb: "write", target: "z", ok: true, path: "/a/z" }],
+      ],
+      asked,
+    );
+    expect(edited[0]).toEqual({ path: "/a", at: 5, prompt: "二", files: ["/a/z", "/a/y"] });
+    // 再問一句、讀檔：仍是上一輪的
+    const again = run(
+      [
+        ["/a", 6, { k: "prompt", text: "三" }],
+        ["/a", 7, { k: "start", verb: "read", target: "y", path: "/a/y" }],
+      ],
+      edited,
+    );
+    expect(again[0]).toMatchObject({ files: ["/a/z", "/a/y"], filesEarlier: true });
+  });
+
+  it("上一輪沒改檔時，新指令不標上一輪", () => {
+    const r = run([
+      ["/a", 1, { k: "prompt", text: "一" }],
+      ["/a", 2, { k: "prompt", text: "二" }],
+    ]);
+    expect(r[0]).toEqual({ path: "/a", at: 2, prompt: "二", files: [] });
   });
 
   it("讀檔、執行指令只更新時間；end、todos、空白指令不算", () => {
@@ -75,7 +99,7 @@ describe("noteActivity 記下是哪個 agent", () => {
     r = noteActivity(r, "/a", { k: "prompt", text: "新的" }, 4, "claude");
     expect(r[0]).toMatchObject({ prompt: "新的", promptAgent: "claude" });
   });
-  it("不同 agent 說了同一句不算同一輪重送：換成新的 agent、清掉上一輪的檔案", () => {
+  it("不同 agent 說了同一句不算同一輪重送：換成新的 agent，檔案標成上一輪的", () => {
     let r = noteActivity([], "/a", { k: "prompt", text: "好" }, 1, "claude");
     r = noteActivity(
       r,
@@ -85,7 +109,12 @@ describe("noteActivity 記下是哪個 agent", () => {
       "claude",
     );
     r = noteActivity(r, "/a", { k: "prompt", text: "好", dedup: true }, 3, "agy");
-    expect(r[0]).toMatchObject({ prompt: "好", promptAgent: "agy", files: [] });
+    expect(r[0]).toMatchObject({
+      prompt: "好",
+      promptAgent: "agy",
+      files: ["/a/a.ts"],
+      filesEarlier: true,
+    });
   });
   it("新指令不知道是哪個 agent 時，不沿用上一句的 promptAgent", () => {
     let r = noteActivity([], "/a", { k: "prompt", text: "一" }, 1, "agy");
@@ -94,12 +123,14 @@ describe("noteActivity 記下是哪個 agent", () => {
   });
   it("存檔讀回來也保留 promptAgent，不認得的值略過", () => {
     const json = JSON.stringify([
-      { path: "/a", at: 1, files: [], prompt: "x", promptAgent: "agy" },
+      { path: "/a", at: 1, files: ["/a/x"], prompt: "x", promptAgent: "agy", filesEarlier: true },
       { path: "/b", at: 0, files: [], prompt: "y", promptAgent: "nope" },
     ]);
     const [a, b] = parseRecaps(json);
     expect(a.promptAgent).toBe("agy");
+    expect(a.filesEarlier).toBe(true);
     expect(b.promptAgent).toBeUndefined();
+    expect(b.filesEarlier).toBeUndefined();
   });
 });
 
@@ -144,6 +175,34 @@ describe("mergeRecaps", () => {
       ["/a", "新"],
       ["/b", undefined],
     ]);
+  });
+
+  it("讀檔前說了新指令、還沒改檔：存檔的檔案當成上一輪的", () => {
+    const saved = [{ path: "/a", at: 5, prompt: "舊", files: ["/a/x"] }];
+    expect(mergeRecaps(saved, [{ path: "/a", at: 9, prompt: "新", files: [] }])).toEqual([
+      { path: "/a", at: 9, prompt: "新", files: ["/a/x"], filesEarlier: true },
+    ]);
+    // 這輪已經改了檔：只留這輪的
+    expect(mergeRecaps(saved, [{ path: "/a", at: 9, prompt: "新", files: ["/a/y"] }])).toEqual([
+      { path: "/a", at: 9, prompt: "新", files: ["/a/y"] },
+    ]);
+  });
+
+  it("只有燈號時沿用存檔的上一輪標記", () => {
+    const saved = [
+      { path: "/a", at: 5, prompt: "問", files: ["/a/x"], filesEarlier: true as const },
+    ];
+    expect(mergeRecaps(saved, [{ path: "/a", at: 9, files: [] }])[0]).toMatchObject({
+      files: ["/a/x"],
+      filesEarlier: true,
+    });
+    // 讀檔前這輪已經改了檔：上一輪的不混進來
+    expect(mergeRecaps(saved, [{ path: "/a", at: 9, files: ["/a/y"] }])[0]).toEqual({
+      path: "/a",
+      at: 9,
+      prompt: "問",
+      files: ["/a/y"],
+    });
   });
 });
 

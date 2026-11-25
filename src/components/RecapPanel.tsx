@@ -240,7 +240,15 @@ function Facts({
       .map(tabName)
       .join(lang === "en" ? ", " : "、");
     const more = recap.files.length > 3 ? "…" : "";
-    const key = recap.files.length === 1 ? "recap.filesOne" : "recap.files";
+    // 這句指令還沒改檔時，清單是上一輪的，標清楚免得誤以為是這句改的
+    const one = recap.files.length === 1;
+    const key = recap.filesEarlier
+      ? one
+        ? "recap.filesEarlierOne"
+        : "recap.filesEarlier"
+      : one
+        ? "recap.filesOne"
+        : "recap.files";
     facts.push(t(key, { count: recap.files.length, names: names + more }));
   }
   if (uncommitted) facts.push(t("recap.uncommitted", { count: uncommitted }));

@@ -13,8 +13,13 @@ export interface ProjectRecap {
   prompt?: string;
   /** 收到這句指令的 agent（同一個專案可能同時開著 Claude 和 agy） */
   promptAgent?: AgentId;
-  /** 最後一句指令之後修改／寫入的檔案（新的在前） */
+  /** 最後一句指令之後修改／寫入的檔案（新的在前）；`filesEarlier` 時是上一句指令改的 */
   files: string[];
+  /**
+   * 這句指令還沒改任何檔，`files` 是上一輪留下的。只是問一句話（或請另一個 agent 看一下）
+   * 不清空檔案清單，等這輪真的改了檔才換掉。
+   */
+  filesEarlier?: true;
   /** 最後用的 agent */
   agent?: AgentId;
 }
@@ -52,9 +57,14 @@ export function noteActivity(
       // agy 同一輪會重送同一句，不要把這輪改過的檔案清掉；別的 agent 剛好說了同一句（例如「好」）不算
       const sameTurn = event.dedup && r.prompt === text && (!agent || r.promptAgent === agent);
       if (sameTurn) return withAgent(r);
-      // 新的一輪：不知道是誰收到時，不沿用上一句的 promptAgent
-      const { promptAgent: _previous, ...rest } = r;
-      return withAgent({ ...rest, prompt: text, files: [], ...(agent && { promptAgent: agent }) });
+      // 新的一輪：不知道是誰收到時，不沿用上一句的 promptAgent；檔案清單留著，標成上一輪的
+      const { promptAgent: _previous, filesEarlier: _earlier, ...rest } = r;
+      return withAgent({
+        ...rest,
+        prompt: text,
+        ...(r.files.length > 0 && { filesEarlier: true as const }),
+        ...(agent && { promptAgent: agent }),
+      });
     });
   }
   // 一步到位的 done 失敗了就沒改到檔案（start 還不知道結果，先記）
@@ -62,12 +72,12 @@ export function noteActivity(
   if ((event.k === "start" || event.k === "done") && event.path && !failed) {
     const file = event.path;
     if (event.verb === "edit" || event.verb === "write") {
-      return upsert(recaps, path, now, (r) =>
-        withAgent({
-          ...r,
-          files: [file, ...r.files.filter((f) => f !== file)].slice(0, MAX_FILES),
-        }),
-      );
+      return upsert(recaps, path, now, (r) => {
+        // 這輪第一次改檔：上一輪留下的清單換成這輪的
+        const { filesEarlier, ...rest } = r;
+        const kept = filesEarlier ? [] : r.files.filter((f) => f !== file);
+        return withAgent({ ...rest, files: [file, ...kept].slice(0, MAX_FILES) });
+      });
     }
   }
   if (event.k === "start" || event.k === "done") return upsert(recaps, path, now, withAgent);
@@ -88,19 +98,28 @@ export function noteStatus(
 
 /**
  * 讀檔完成前就有新動作時，合併存檔與剛發生的紀錄。
- * 同一個專案：剛發生的有新指令就以它為準；只有燈號或讀檔這類動作時，沿用存檔的指令與檔案。
+ * 同一個專案：剛發生的有新指令就以它為準（這輪還沒改檔時，存檔裡的檔案當成上一輪的）；
+ * 只有燈號或讀檔這類動作時，沿用存檔的指令與檔案。
  */
 export function mergeRecaps(saved: ProjectRecap[], live: ProjectRecap[]): ProjectRecap[] {
   const savedByPath = new Map(saved.map((r) => [r.path, r]));
   const merged = live.map((r) => {
     const old = savedByPath.get(r.path);
-    if (!old || r.prompt !== undefined) return r;
-    const files = [...r.files, ...old.files.filter((f) => !r.files.includes(f))];
+    if (!old) return r;
+    if (r.prompt !== undefined) {
+      return r.files.length === 0 && old.files.length > 0
+        ? { ...r, files: old.files, filesEarlier: true as const }
+        : r;
+    }
+    // 存檔的是上一輪的檔案、這輪又已經改了檔：只留這輪的
+    const oldFiles = old.filesEarlier && r.files.length > 0 ? [] : old.files;
+    const files = [...r.files, ...oldFiles.filter((f) => !r.files.includes(f))];
     return {
       ...r,
       ...(old.prompt !== undefined && { prompt: old.prompt }),
       ...(old.promptAgent && { promptAgent: old.promptAgent }),
       files: files.slice(0, MAX_FILES),
+      ...(old.filesEarlier && r.files.length === 0 && { filesEarlier: true as const }),
       ...((r.agent ?? old.agent) && { agent: r.agent ?? old.agent }),
     };
   });
@@ -133,6 +152,7 @@ export function parseRecaps(json: string | null): ProjectRecap[] {
           : [],
         ...(isAgentId(r.agent) && { agent: r.agent }),
         ...(isAgentId(r.promptAgent) && { promptAgent: r.promptAgent }),
+        ...(r.filesEarlier === true && { filesEarlier: true as const }),
       }))
       .sort((a, b) => b.at - a.at)
       .slice(0, MAX_PROJECTS);
