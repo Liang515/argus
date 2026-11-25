@@ -70,7 +70,7 @@ brew install --cask liang515/tap/argus
 
 Windows 版每個分頁開 PowerShell（有裝 PowerShell 7 就用它），快捷鍵和 Windows Terminal 一樣用 Ctrl+Shift：Ctrl+Shift+T 開分頁、Ctrl+Shift+K 切換器、Ctrl+Shift+J 近況、Ctrl+Tab 下一個分頁、Ctrl+1–9 跳到分頁、Ctrl+Shift+C／Ctrl+V 複製貼上、Ctrl＋點擊開啟路徑。按 Ctrl+Shift+/ 看全部。
 
-Windows 版還沒有的：執行中與已完成的燈號、活動面板，以及近況裡的指令與改過的檔案（這些需要 agent 的 hook，下一版加入）。「等你確認」燈號靠畫面文字偵測；「跟隨終端機」配色只有 macOS 有。
+燈號、活動面板與近況都和 macOS 一樣：在 Argus 分頁裡執行 `claude` 或 `agy` 時，它們的 hook 會透過 `argus.exe` 回報給 Argus。「跟隨終端機」配色只有 macOS 有。
 
 需求：
 
@@ -87,7 +87,7 @@ Argus 不會改你自己的 shell 或 agent 設定，只會寫入：
 - 專案的 `CLAUDE.md`：只有你在側欄按「加入交接規則」時才會寫。
 - 專案旁邊的 `<專案>-wt-N` 資料夾：只有你選擇用新的 Git worktree 開分頁時才會建立。
 
-Windows 版只會寫入 `%USERPROFILE%\.argus\`（存下的分頁、近況與自訂 agent），目前沒有狀態 hook。
+Windows 版寫入的位置相同，都在 `%USERPROFILE%` 底下。沒有 shell 腳本與 zsh 包裝：`.argus\hooks.json` 讓 hook 直接呼叫 `argus.exe`，每個 PowerShell 分頁會定義 `claude` 函式帶上它。
 
 ## 從原始碼 build
 

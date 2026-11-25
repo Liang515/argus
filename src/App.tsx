@@ -418,6 +418,15 @@ export default function App() {
     return () => void unlisten.then((f) => f());
   }, []);
 
+  // Windows 的 hook 經 named pipe 回報，後端轉成這個事件（macOS 的走終端機輸出）
+  useEffect(() => {
+    const unlisten = listen<{ id: string; osc: string[] }>("argus-hook", (e) => {
+      const session = sessions.current.get(e.payload.id);
+      for (const osc of e.payload.osc) session?.handleHookOsc(osc);
+    });
+    return () => void unlisten.then((f) => f());
+  }, []);
+
   useEffect(() => {
     const refresh = async () => {
       const entries = await Promise.all(

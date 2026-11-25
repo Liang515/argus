@@ -137,19 +137,7 @@ export class TerminalSession {
       provideLinks: (y, callback) => void this.pathLinks(y).then(callback),
     });
     this.term.parser.registerOscHandler(DECK_OSC, (data) => {
-      // 側欄「活動」的摘要（hook 和燈號一起送）
-      if (data.startsWith(ACTIVITY_TAG)) {
-        const event = parseActivity(data.slice(ACTIVITY_TAG.length));
-        if (event) this.onActivity(this.id, event, this.agent);
-        return true;
-      }
-      const parsed = parseArgusOsc(data);
-      if (parsed) {
-        this.hooksSeen = true;
-        // 有 hook 事件代表 Claude 已經在這個分頁跑起來了，不必再等「背景執行中」的訊息
-        this.resumeWatchUntil = 0;
-        this.setStatus(parsed.status, parsed.agent);
-      }
+      this.handleHookOsc(data);
       return true;
     });
 
@@ -188,6 +176,26 @@ export class TerminalSession {
     this.term.onResize(({ cols, rows }) => {
       if (this.running) void invoke("pty_resize", { id: this.id, cols, rows }).catch(() => {});
     });
+  }
+
+  /**
+   * hook 送來的 OSC 7777 內容（`7777;` 之後的部分）。macOS 經終端機輸出送達；
+   * Windows 經 named pipe 由後端以 `argus-hook` 事件轉來，內容相同。
+   */
+  handleHookOsc(data: string) {
+    // 側欄「活動」的摘要（hook 和燈號一起送）
+    if (data.startsWith(ACTIVITY_TAG)) {
+      const event = parseActivity(data.slice(ACTIVITY_TAG.length));
+      if (event) this.onActivity(this.id, event, this.agent);
+      return;
+    }
+    const parsed = parseArgusOsc(data);
+    if (parsed) {
+      this.hooksSeen = true;
+      // 有 hook 事件代表 Claude 已經在這個分頁跑起來了，不必再等「背景執行中」的訊息
+      this.resumeWatchUntil = 0;
+      this.setStatus(parsed.status, parsed.agent);
+    }
   }
 
   /** 第一次掛到 DOM 時才開啟 xterm 與 PTY（需要實際尺寸）。 */

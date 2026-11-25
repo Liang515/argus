@@ -88,6 +88,31 @@ pub fn current_path() -> String {
     }
 }
 
+/// stdin 是不是管線（hook 會把資料接到 stdin）。GUI 程式從 PowerShell 啟動時沒有主控台，
+/// 不能用「不是終端機」判斷，所以直接看檔案類型。
+#[cfg(windows)]
+pub fn stdin_is_pipe() -> bool {
+    use windows_sys::Win32::Storage::FileSystem::{FILE_TYPE_PIPE, GetFileType};
+    use windows_sys::Win32::System::Console::{GetStdHandle, STD_INPUT_HANDLE};
+    // SAFETY：只查詢 handle 類型；handle 無效時 GetFileType 回傳 FILE_TYPE_UNKNOWN
+    unsafe { GetFileType(GetStdHandle(STD_INPUT_HANDLE)) == FILE_TYPE_PIPE }
+}
+
+/// 8.3 短檔名（`C:\PROGRA~1\…`），沒有空白，給要經過 shell 的指令用；拿不到（磁碟關掉了短檔名）就回傳原路徑。
+#[cfg(windows)]
+pub fn short_path(path: &Path) -> PathBuf {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use windows_sys::Win32::Storage::FileSystem::GetShortPathNameW;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut buf = vec![0u16; 1024];
+    // SAFETY：輸入以 0 結尾；回傳值超過緩衝區大小（或 0 表示失敗）時不讀取緩衝區
+    let len = unsafe { GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), buf.len() as u32) };
+    if len == 0 || len as usize >= buf.len() {
+        return path.to_path_buf();
+    }
+    PathBuf::from(std::ffi::OsString::from_wide(&buf[..len as usize]))
+}
+
 /// 讀登錄檔裡的 Path 值；`%USERPROFILE%` 這類變數由 RegGetValueW 展開。
 #[cfg(windows)]
 fn registry_path(machine: bool, subkey: &str) -> Option<String> {

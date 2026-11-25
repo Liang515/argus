@@ -2,6 +2,7 @@ mod activity;
 mod custom_agents;
 mod editors;
 mod git;
+mod hook;
 mod integration;
 mod paths;
 mod project;
@@ -141,8 +142,25 @@ pub fn hook_summary_main() {
     activity::hook_summary_main();
 }
 
+/// Windows：stdin 是不是管線（見 main.rs 的舊版 Claude Code 判斷）。
+#[cfg(windows)]
+pub fn stdin_is_pipe() -> bool {
+    sys::stdin_is_pipe()
+}
+
+/// `argus --hook <狀態> [agent]`：Windows 的狀態 hook，送給執行中的 Argus 後結束。
+pub fn hook_main(args: &[String]) {
+    hook::hook_main(args);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    let pipe = hook::new_pipe_name();
+    #[cfg(windows)]
+    let integration = integration::install(pipe.clone());
+    #[cfg(not(windows))]
+    let integration = integration::install();
     let builder = tauri::Builder::default();
     // macOS 的選單在螢幕頂端；Windows 設了選單（即使是空的）會在視窗裡多一排選單列，所以不設
     #[cfg(target_os = "macos")]
@@ -154,7 +172,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(pty::PtyManager::new(
-            integration::install()
+            integration
                 .inspect_err(|e| eprintln!("Claude 狀態整合安裝失敗：{e}"))
                 .ok(),
         ))
@@ -189,6 +207,11 @@ pub fn run() {
             confirm_quit,
             cancel_quit,
         ])
+        .setup(move |_app| {
+            #[cfg(windows)]
+            hook::serve(_app.handle().clone(), pipe);
+            Ok(())
+        })
         .on_menu_event(|app, event| {
             if event.id().as_ref() == QUIT_MENU_ID {
                 request_quit(app);

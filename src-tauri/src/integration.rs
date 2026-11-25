@@ -5,8 +5,11 @@
 //!   hook 子行程沒有 controlling tty，所以不能寫 `/dev/tty`，改用 PTY 啟動時記下的裝置路徑。
 //! - `hooks.json`：給 `claude --settings` 用的 hooks 設定，只在 Argus 裡生效。
 //! - `zsh/`：ZDOTDIR 包裝，照常載入使用者原本的 zsh 設定，最後定義 `claude` 函式自動帶上 `--settings`。
+//!
+//! Windows 沒有終端機裝置可寫：`hooks.json` 改成直接執行 `argus.exe --hook`（見 [`crate::hook`]），
+//! `claude` 函式由 PowerShell 啟動參數定義（見 `pty.rs`）。
 
-// Windows 版還沒有安裝這些整合檔（見 [`install`]），產生檔案的函式暫時用不到
+// shell 腳本與 zsh 包裝只有 macOS 用得到
 #![cfg_attr(windows, allow(dead_code))]
 
 use std::fs;
@@ -19,6 +22,8 @@ use serde_json::json;
 pub struct Integration {
     pub hooks_file: PathBuf,
     pub zsh_dir: PathBuf,
+    /// Windows：hook 回報狀態用的 named pipe（見 [`crate::hook`]）
+    pub pipe: Option<String>,
 }
 
 /// 找出要寫燈號的終端機，兩個 hook 共用（安裝時代入 `__ARGUS_TARGET__`）。
@@ -116,18 +121,20 @@ fi
 echo '{}'
 "#;
 
+/// agy 外掛的 hooks 設定，`command` 是每個狀態要執行的指令。
 /// 不註冊 PreToolUse：它的回傳值會影響 agy 的權限判斷。
-const AGY_HOOKS_JSON: &str = r#"{
-  "argus-status": {
-    "SessionStart": [{ "type": "command", "command": "sh ./argus-hook.sh idle", "timeout": 5 }],
-    "PreInvocation": [{ "type": "command", "command": "sh ./argus-hook.sh running", "timeout": 5 }],
-    "PostToolUse": [
-      { "matcher": "*", "hooks": [{ "type": "command", "command": "sh ./argus-hook.sh running", "timeout": 5 }] }
-    ],
-    "Stop": [{ "type": "command", "command": "sh ./argus-hook.sh done", "timeout": 5 }]
-  }
+fn agy_hooks_json(command: impl Fn(&str) -> String) -> String {
+    let hook = |state: &str| json!({ "type": "command", "command": command(state), "timeout": 5 });
+    let spec = json!({
+        "argus-status": {
+            "SessionStart": [hook("idle")],
+            "PreInvocation": [hook("running")],
+            "PostToolUse": [{ "matcher": "*", "hooks": [hook("running")] }],
+            "Stop": [hook("done")],
+        }
+    });
+    serde_json::to_string_pretty(&spec).unwrap_or_default()
 }
-"#;
 
 /// 只有已經裝了 agy（有 `~/.gemini/config`）才安裝，回傳是否有安裝。
 #[cfg(test)]
@@ -146,12 +153,50 @@ pub fn install_agy_plugin_with_bin(
     let dir = plugins.join("argus");
     fs::create_dir_all(&dir)?;
     fs::write(dir.join("plugin.json"), AGY_PLUGIN_JSON)?;
-    fs::write(dir.join("hooks.json"), AGY_HOOKS_JSON)?;
+    fs::write(
+        dir.join("hooks.json"),
+        agy_hooks_json(|state| format!("sh ./argus-hook.sh {state}")),
+    )?;
     fs::write(
         dir.join("argus-hook.sh"),
         hook_script_with(AGY_HOOK_SCRIPT, argus_bin),
     )?;
     Ok(true)
+}
+
+/// Windows：agy 外掛直接呼叫 `argus.exe --hook <狀態> agy`（印出 agy 要的 `{}`）。
+/// agy 用哪個 shell 執行指令沒有文件，`exe` 要在 cmd 與 PowerShell 都能用（見 [`portable_exe`]）。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn install_agy_plugin_exe(gemini_config: &Path, exe: &str) -> io::Result<bool> {
+    if !gemini_config.is_dir() {
+        return Ok(false);
+    }
+    let dir = gemini_config.join("plugins").join("argus");
+    fs::create_dir_all(&dir)?;
+    fs::write(dir.join("plugin.json"), AGY_PLUGIN_JSON)?;
+    fs::write(
+        dir.join("hooks.json"),
+        agy_hooks_json(|state| format!("{exe} --hook {state} agy")),
+    )?;
+    // 舊版留下的 sh 腳本 Windows 用不到
+    let _ = fs::remove_file(dir.join("argus-hook.sh"));
+    Ok(true)
+}
+
+/// 執行檔路徑寫成 cmd 與 PowerShell 都看得懂的樣子：反斜線（cmd 會把 `/` 當成參數開關）、
+/// 不加引號（PowerShell 要 `&` 才會執行加了引號的路徑）。呼叫端先換成 8.3 短檔名去掉空白；
+/// 還有空白或 shell 特殊字元（`&`、`(`、`%`…）時只能加雙引號（cmd 可以，PowerShell 不行）。
+/// Git Bash 會吃掉反斜線，不支援。
+#[cfg_attr(not(windows), allow(dead_code))]
+fn portable_exe(path: &str) -> String {
+    let safe = path
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '\\' | ':' | '.' | '_' | '-' | '~'));
+    if safe {
+        path.to_string()
+    } else {
+        format!("\"{path}\"")
+    }
 }
 
 /// 使用者原本的 zsh 啟動檔照順序載入；ZDOTDIR 可能在 .zshenv 裡被改，所以每次都更新。
@@ -236,6 +281,35 @@ pub fn hooks_settings(hook_script: &Path) -> serde_json::Value {
     })
 }
 
+/// Windows 的 Claude hooks：exec 形式（有 `args`）直接啟動 argus.exe，不經 shell，
+/// 路徑有空白或特殊字元都不用處理引號。
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn exec_hooks_settings(argus_exe: &Path) -> serde_json::Value {
+    let exe = argus_exe.to_string_lossy();
+    let hook = |state: &str| {
+        json!([{
+            "matcher": "*",
+            "hooks": [{
+                "type": "command",
+                "command": exe,
+                "args": ["--hook", state],
+            }],
+        }])
+    };
+    json!({
+        "hooks": {
+            "SessionStart": hook("idle"),
+            "UserPromptSubmit": hook("running"),
+            "PreToolUse": hook("running"),
+            "PostToolUse": hook("running"),
+            "PostToolUseFailure": hook("running"),
+            "Notification": hook("notify"),
+            "Stop": hook("done"),
+            "SessionEnd": hook("off"),
+        }
+    })
+}
+
 /// 把整合檔案寫到 `dir`（每次啟動覆寫，確保跟目前版本一致）。
 #[cfg(test)]
 pub fn install_to(dir: &Path) -> io::Result<Integration> {
@@ -262,15 +336,36 @@ pub fn install_with_bin(dir: &Path, argus_bin: Option<&Path>) -> io::Result<Inte
     Ok(Integration {
         hooks_file,
         zsh_dir,
+        pipe: None,
     })
 }
 
+/// Windows：hooks.json 指向 argus.exe，agy 外掛也改呼叫 argus.exe。
 #[cfg(windows)]
-pub fn install() -> io::Result<Integration> {
-    Err(io::Error::new(
-        io::ErrorKind::Unsupported,
-        "Windows 版尚未支援狀態 hook",
-    ))
+pub fn install(pipe: String) -> io::Result<Integration> {
+    let home =
+        dirs::home_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "找不到家目錄"))?;
+    // 很長的路徑可能帶 `\\?\` 前綴，寫進設定檔前去掉
+    let exe = dunce::simplified(&std::env::current_exe()?).to_path_buf();
+    let dir = home.join(".argus");
+    fs::create_dir_all(&dir)?;
+    let short = crate::sys::short_path(&exe);
+    if let Err(e) = install_agy_plugin_exe(
+        &home.join(".gemini").join("config"),
+        &portable_exe(&short.to_string_lossy()),
+    ) {
+        eprintln!("agy 狀態外掛安裝失敗：{e}");
+    }
+    let hooks_file = dir.join("hooks.json");
+    fs::write(
+        &hooks_file,
+        serde_json::to_string_pretty(&exec_hooks_settings(&exe))?,
+    )?;
+    Ok(Integration {
+        hooks_file,
+        zsh_dir: dir.join("zsh"),
+        pipe: Some(pipe),
+    })
 }
 
 #[cfg(not(windows))]
@@ -286,7 +381,58 @@ pub fn install() -> io::Result<Integration> {
     install_with_bin(&home.join(".argus"), exe.as_deref())
 }
 
-// hook 是 POSIX shell 腳本，Windows 版還沒有狀態整合（第二階段改用 argus.exe）
+#[cfg(test)]
+mod portable_tests {
+    use super::*;
+
+    #[test]
+    fn exec_hooks_pass_the_path_untouched() {
+        let settings = exec_hooks_settings(Path::new(r"C:\Program Files\Argus\argus.exe"));
+        let hook = &settings["hooks"]["Notification"][0]["hooks"][0];
+        assert_eq!(hook["command"], r"C:\Program Files\Argus\argus.exe");
+        assert_eq!(hook["args"], json!(["--hook", "notify"]));
+        assert_eq!(settings["hooks"].as_object().unwrap().len(), 8);
+    }
+
+    #[test]
+    fn portable_exe_is_bare_only_when_every_character_is_safe() {
+        assert_eq!(
+            portable_exe(r"C:\Users\ARGUS~1\AppData\Local\Argus\argus.exe"),
+            r"C:\Users\ARGUS~1\AppData\Local\Argus\argus.exe"
+        );
+        for odd in [
+            r"C:\My Apps\argus.exe",
+            r"D:\A&B\argus.exe",
+            r"D:\x(1)\argus.exe",
+        ] {
+            assert_eq!(portable_exe(odd), format!("\"{odd}\""));
+        }
+    }
+
+    #[test]
+    fn windows_agy_plugin_calls_the_exe() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config");
+        assert!(!install_agy_plugin_exe(&config, r"C:\a\argus.exe").unwrap());
+        fs::create_dir_all(config.join("plugins/argus")).unwrap();
+        fs::write(config.join("plugins/argus/argus-hook.sh"), "old").unwrap();
+        assert!(install_agy_plugin_exe(&config, r"C:\a\argus.exe").unwrap());
+        let plugin = config.join("plugins/argus");
+        let hooks: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(plugin.join("hooks.json")).unwrap()).unwrap();
+        assert_eq!(
+            hooks["argus-status"]["Stop"][0]["command"],
+            r"C:\a\argus.exe --hook done agy"
+        );
+        assert_eq!(
+            hooks["argus-status"]["PostToolUse"][0]["hooks"][0]["command"],
+            r"C:\a\argus.exe --hook running agy"
+        );
+        assert!(!plugin.join("argus-hook.sh").exists());
+    }
+}
+
+// hook 是 POSIX shell 腳本（Windows 走 argus.exe，見 portable_tests 與 hook.rs）
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;

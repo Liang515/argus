@@ -105,6 +105,9 @@ fn argus_env(
         extra.push(("ARGUS_TTY".into(), tty.to_string_lossy().into_owned()));
     }
     if let Some(integration) = integration {
+        if let Some(pipe) = &integration.pipe {
+            extra.push((crate::hook::PIPE_ENV.into(), pipe.clone()));
+        }
         extra.push((
             "ARGUS_HOOKS".into(),
             integration.hooks_file.to_string_lossy().into_owned(),
@@ -124,23 +127,51 @@ fn argus_env(
 
 /// 分頁要啟動的 shell 與參數。
 #[cfg(not(windows))]
-fn shell() -> (String, &'static [&'static str]) {
+fn shell(_hooks: bool) -> (String, Vec<String>) {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
     // login shell 會載入 .zprofile / .zshrc，GUI App 才拿得到使用者的 PATH。
-    (shell, &["-l"])
+    (shell, vec!["-l".into()])
 }
+
+/// Windows 版的 `claude` 包裝（同 zsh 的 `function claude`）：在使用者的 profile 之後定義，
+/// 執行 claude 時自動帶上狀態回報 hooks。使用者的 alias 會蓋過函式，所以先移除
+/// （`-ErrorAction Ignore`：沒有 alias 時也不在 `$Error` 留紀錄）。
+/// 找真正的 claude 時只看執行檔（claude.exe、npm 的 claude.cmd；不然會找到這個函式自己，
+/// .ps1 也可能被執行原則擋下）。PowerShell 函式不會把管線輸入交給裡面的程式，
+/// `git diff | claude -p` 要自己轉交；沒有管線時不能轉，互動畫面要用原本的輸入。
+/// 不能有雙引號：整段是一個命令列參數。
+#[cfg(windows)]
+const POWERSHELL_CLAUDE: &str = "Remove-Item Alias:claude -Force -ErrorAction Ignore; \
+function global:claude { \
+$c = Get-Command claude -CommandType Application -ErrorAction Ignore | Select-Object -First 1; \
+if (-not $c) { Write-Error 'claude: command not found'; return }; \
+if ($MyInvocation.ExpectingInput) { $input | & $c.Source --settings $env:ARGUS_HOOKS @args } \
+else { & $c.Source --settings $env:ARGUS_HOOKS @args } }";
 
 /// Windows：有裝 PowerShell 7（pwsh）就用它，否則用系統內建的 Windows PowerShell。
 #[cfg(windows)]
-fn shell() -> (String, &'static [&'static str]) {
+fn shell(hooks: bool) -> (String, Vec<String>) {
     let shell = crate::sys::find_in_path("pwsh")
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "powershell.exe".into());
-    (shell, &["-NoLogo"])
+    let mut args = vec!["-NoLogo".to_string()];
+    if hooks {
+        // -NoExit：執行完包裝後留在互動模式；使用者的 profile 照常先載入
+        args.extend([
+            "-NoExit".into(),
+            "-Command".into(),
+            POWERSHELL_CLAUDE.into(),
+        ]);
+    }
+    (shell, args)
 }
 
-fn build_command(cwd: &str, extra: impl Fn(&str) -> Vec<(String, String)>) -> CommandBuilder {
-    let (shell, args) = shell();
+fn build_command(
+    cwd: &str,
+    hooks: bool,
+    extra: impl Fn(&str) -> Vec<(String, String)>,
+) -> CommandBuilder {
+    let (shell, args) = shell(hooks);
     let extra = extra(&shell);
     let mut cmd = CommandBuilder::new(&shell);
     cmd.args(args);
@@ -186,12 +217,12 @@ pub fn pty_spawn(
             pixel_height: 0,
         })
         .map_err(|e| e.to_string())?;
-    // Windows（ConPTY）沒有終端機裝置路徑；hook 靠它回報狀態，所以 Windows 目前沒有燈號 hook
+    // Windows（ConPTY）沒有終端機裝置路徑，hook 改經 named pipe 回報（見 hook.rs）
     #[cfg(unix)]
     let tty = pair.master.tty_name();
     #[cfg(not(unix))]
     let tty: Option<std::path::PathBuf> = None;
-    let command = build_command(&cwd, |shell| {
+    let command = build_command(&cwd, state.integration.is_some(), |shell| {
         argus_env(&id, tty.as_deref(), shell, state.integration.as_ref())
     });
     let mut child = pair
@@ -425,12 +456,56 @@ mod tests {
         assert_eq!(get(&env, "LANG"), Some("zh_TW.UTF-8"));
     }
 
+    /// 用真的 PowerShell 驗證：claude 函式找得到真正的 claude，帶上 --settings 與原本的參數，
+    /// 使用者的 alias 不會擋掉它。
+    #[cfg(windows)]
+    #[test]
+    fn powershell_wrapper_adds_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("claude.cmd"),
+            // 印出參數；有管線輸入時逐行印出（沒有管線時 stdin 是空的，more 馬上結束）
+            "@echo ARGS:%*\r\n@for /f \"delims=\" %%l in ('more') do @echo STDIN:%%l\r\n",
+        )
+        .unwrap();
+        let path = format!(
+            "{};{}",
+            dir.path().display(),
+            std::env::var("PATH").unwrap()
+        );
+        let script = format!(
+            "Set-Alias claude Get-Date; {POWERSHELL_CLAUDE}; claude -c 'two words'; \
+             'piped-line' | claude -p; Write-Output ('errors:' + $Error.Count)"
+        );
+        let out = std::process::Command::new("powershell.exe")
+            .args(["-NoLogo", "-NoProfile", "-Command", &script])
+            .env("PATH", path)
+            .env("ARGUS_HOOKS", r"C:\x\hooks.json")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stdout.contains(r#"ARGS:--settings C:\x\hooks.json -c "two words""#),
+            "{stdout}\n{stderr}"
+        );
+        // 管線輸入要送進 claude（Windows PowerShell 5.1 送給外部程式時前面會加 BOM，和包裝無關）
+        assert!(
+            stdout
+                .lines()
+                .any(|l| l.starts_with("STDIN:") && l.ends_with("piped-line")),
+            "{stdout}\n{stderr}"
+        );
+        assert!(stdout.contains("errors:0"), "{stdout}\n{stderr}");
+    }
+
     #[cfg(unix)]
     #[test]
     fn argus_env_wraps_zsh_only() {
         let integration = Integration {
             hooks_file: "/d/hooks.json".into(),
             zsh_dir: "/d/zsh".into(),
+            pipe: None,
         };
         let tty = Path::new("/dev/ttys004");
         let zsh = argus_env("t", Some(tty), "/bin/zsh", Some(&integration));

@@ -18,7 +18,7 @@ const MAX_DETAIL: usize = 400;
 const MAX_TODOS: usize = 20;
 const MAX_TODO_TEXT: usize = 80;
 /// hook 原始資料最多讀多少（寫入大檔時 tool_input 會很大）。
-const MAX_PAYLOAD: u64 = 2 * 1024 * 1024;
+pub const MAX_PAYLOAD: u64 = 2 * 1024 * 1024;
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(tag = "k", rename_all = "lowercase")]
