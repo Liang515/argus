@@ -135,11 +135,12 @@ fn shell(_hooks: bool) -> (String, Vec<String>) {
 
 /// Windows 版的 `claude` 包裝（同 zsh 的 `function claude`）：在使用者的 profile 之後定義，
 /// 執行 claude 時自動帶上狀態回報 hooks。使用者的 alias 會蓋過函式，所以先移除。
-/// 找真正的 claude 時只看執行檔與腳本（不然會找到這個函式自己）。不能有雙引號：整段是一個命令列參數。
+/// 找真正的 claude 時只看執行檔（claude.exe、npm 的 claude.cmd；不然會找到這個函式自己，
+/// .ps1 也可能被執行原則擋下）。不能有雙引號：整段是一個命令列參數。
 #[cfg(windows)]
 const POWERSHELL_CLAUDE: &str = "Remove-Item Alias:claude -Force -ErrorAction SilentlyContinue; \
 function global:claude { \
-$c = Get-Command claude -CommandType Application,ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1; \
+$c = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; \
 if (-not $c) { Write-Error 'claude: command not found'; return }; \
 & $c.Source --settings $env:ARGUS_HOOKS @args }";
 

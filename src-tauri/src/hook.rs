@@ -167,10 +167,9 @@ pub fn serve(app: tauri::AppHandle, name: String) {
             }
         };
         loop {
-            if server.connect().await.is_err() {
-                continue;
-            }
+            let connected = server.connect().await.is_ok();
             let client = server;
+            // 每個連線用掉一個執行個體，先開好下一個再處理；連線失敗的那個直接丟掉
             server = match ServerOptions::new()
                 .reject_remote_clients(true)
                 .create(&name)
@@ -181,6 +180,9 @@ pub fn serve(app: tauri::AppHandle, name: String) {
                     return;
                 }
             };
+            if !connected {
+                continue;
+            }
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let mut buf = Vec::new();
