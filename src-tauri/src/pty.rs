@@ -489,8 +489,13 @@ mod tests {
             stdout.contains(r#"ARGS:--settings C:\x\hooks.json -c "two words""#),
             "{stdout}\n{stderr}"
         );
-        // 管線輸入要送進 claude
-        assert!(stdout.contains("STDIN:piped-line"), "{stdout}\n{stderr}");
+        // 管線輸入要送進 claude（Windows PowerShell 5.1 送給外部程式時前面會加 BOM，和包裝無關）
+        assert!(
+            stdout
+                .lines()
+                .any(|l| l.starts_with("STDIN:") && l.ends_with("piped-line")),
+            "{stdout}\n{stderr}"
+        );
         assert!(stdout.contains("errors:0"), "{stdout}\n{stderr}");
     }
 
