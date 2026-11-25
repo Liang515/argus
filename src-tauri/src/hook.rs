@@ -186,7 +186,8 @@ pub fn serve(app: tauri::AppHandle, name: String) {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
                 let mut buf = Vec::new();
-                let read = client.take(MAX_MESSAGE as u64 + 1).read_to_end(&mut buf);
+                let mut limited = client.take(MAX_MESSAGE as u64 + 1);
+                let read = limited.read_to_end(&mut buf);
                 // hook 寫完就關閉連線；卡住的連線 2 秒後放棄
                 if tokio::time::timeout(std::time::Duration::from_secs(2), read)
                     .await
