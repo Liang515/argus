@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { findPathCandidates, hyperlinkTarget, lineText, pickExisting } from "./filePaths";
+import {
+  findPathCandidates,
+  hyperlinkTarget,
+  lineText,
+  pickExisting,
+  URL_REGEX,
+} from "./filePaths";
 
 // 沒指定平台的測試用 macOS 規則；CI 也在 Windows 上跑，不能依跑測試的機器而定
 vi.mock("./platform", async (importOriginal) => ({
@@ -139,5 +145,23 @@ describe("有空白或括號的檔名", () => {
     expect(pickExisting(found, short).map((i) => found[i].path)).toEqual([
       "~/Documents/slides/sources/261125-080-voice-qa/261125",
     ]);
+  });
+});
+
+describe("URL_REGEX（一般文字裡的網址）", () => {
+  const urls = (text: string) => [...text.matchAll(new RegExp(URL_REGEX, "g"))].map((m) => m[0]);
+
+  it("全形標點結束網址", () => {
+    expect(urls("在 Safari 打開 http://localhost:8777。")).toEqual(["http://localhost:8777"]);
+    expect(urls("見 https://example.com/a，然後")).toEqual(["https://example.com/a"]);
+    expect(urls("「https://example.com/x」")).toEqual(["https://example.com/x"]);
+    expect(urls("（https://example.com/y）")).toEqual(["https://example.com/y"]);
+  });
+
+  it("網址裡的中文字照樣保留，半形結尾標點照舊去掉", () => {
+    expect(urls("https://zh.wikipedia.org/wiki/台北 好")).toEqual([
+      "https://zh.wikipedia.org/wiki/台北",
+    ]);
+    expect(urls("see https://example.com/a?b=1.")).toEqual(["https://example.com/a?b=1"]);
   });
 });

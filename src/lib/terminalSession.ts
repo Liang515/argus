@@ -10,7 +10,13 @@ import { type ActivityEvent, parseActivity } from "./activity";
 import type { AgentId } from "./agents";
 import { parseOsc52 } from "./clipboard";
 import { handleEditKeyEvent } from "./editKeys";
-import { findPathCandidates, hyperlinkTarget, lineText, pickExisting } from "./filePaths";
+import {
+  findPathCandidates,
+  hyperlinkTarget,
+  lineText,
+  pickExisting,
+  URL_REGEX,
+} from "./filePaths";
 import { DEFAULT_FONT_SIZE } from "./fontSize";
 import { t } from "./i18n";
 import { isMac } from "./platform";
@@ -126,9 +132,12 @@ export class TerminalSession {
     this.term.loadAddon(this.fitAddon);
     // 網址和檔案路徑一樣要 ⌘＋點擊才開，一般點擊留給選取文字；只開 http(s)
     this.term.loadAddon(
-      new WebLinksAddon((event, uri) => {
-        if (linkModifier(event) && /^https?:\/\//i.test(uri)) void openUrl(uri);
-      }),
+      new WebLinksAddon(
+        (event, uri) => {
+          if (linkModifier(event) && /^https?:\/\//i.test(uri)) void openUrl(uri);
+        },
+        { urlRegex: URL_REGEX },
+      ),
     );
     // 寬度要和 agent（string-width）及 macOS「終端機」一致：⚠️ 這類「符號＋表情變體」算 2 格。
     // 舊的 Unicode 11 規則算 1 格，長對話重畫時會整個偏一行（接回對話時輸入框多一行空白）。

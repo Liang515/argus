@@ -145,6 +145,14 @@ export function lineText(cells: CellLike[]): { text: string; col: number[]; widt
 }
 
 /**
+ * 一般文字裡的網址（給 WebLinksAddon）：沿用它預設的規則，再讓全形標點（「。，」（）等，
+ * U+3000–303F、U+FF00–FFEF）結束網址。中文回覆常把句號直接接在網址後面，
+ * 預設規則會把「。」算進去，變成不合法網址而整個點不了。
+ */
+export const URL_REGEX =
+  /(https?|HTTPS?):[/]{2}[^\s"'!*(){}|\\^<>`\u3000-\u303f\uff00-\uffef]*[^\s"':,.!?{}|\\^~[\]`()<>\u3000-\u303f\uff00-\uffef]/;
+
+/**
  * 終端機程式用 OSC 8 標的超連結要打開什麼：http(s) 網址，或 `file://` 指向的本機路徑。
  * 其他協定（以及別台主機的 file://）一律不開。
  */
