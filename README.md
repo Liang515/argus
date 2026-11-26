@@ -29,7 +29,7 @@ A terminal workspace for coding agents on macOS (and, in preview, Windows). Keep
 | Start / resume from the tab bar | ✓           | ✓         | ✓                              |
 | Running and done lights         | ✓           | ✓         | –                              |
 | Waiting-for-you light           | ✓           | –         | best effort (from screen text) |
-| New chat / switch chat buttons  | ✓           | –         | –                              |
+| New chat / switch chat buttons  | ✓           | ✓         | –                              |
 | Activity panel                  | ✓           | ✓ (steps) | –                              |
 | Recent work (prompt & files)    | ✓           | ✓         | time only                      |
 

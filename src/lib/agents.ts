@@ -13,6 +13,8 @@ export const AGENTS: Record<
     label: string;
     start: string;
     resume: string;
+    /** 對話閒置時右上角「新對話／切換對話」送出的斜線指令；沒有代表不支援（例如無狀態 hook 的 Codex） */
+    inSession?: { newChat: string; switchChat: string };
     /** 官方安裝說明頁 */
     install: string;
     /** 官方的一行安裝指令：macOS 用 shell，Windows 用 PowerShell（2026-11 從官網查證） */
@@ -23,6 +25,7 @@ export const AGENTS: Record<
     label: "Claude",
     start: "claude",
     resume: "claude --resume",
+    inSession: { newChat: "/clear", switchChat: "/resume" },
     install: "https://code.claude.com/docs/en/setup",
     installCommand: isMac
       ? "curl -fsSL https://claude.ai/install.sh | bash"
@@ -32,6 +35,7 @@ export const AGENTS: Record<
     label: "Antigravity",
     start: "agy",
     resume: "agy -c",
+    inSession: { newChat: "/clear", switchChat: "/resume" },
     install: "https://antigravity.google/docs/cli/install",
     installCommand: isMac
       ? "curl -fsSL https://antigravity.google/cli/install.sh | bash"
@@ -61,14 +65,14 @@ export function preferredAgent(tabAgent: string | undefined, installed: AgentId[
 /**
  * 分頁列右側按鈕的模式：
  * - launch：沒有 agent 在跑，可以啟動或接續
- * - claude-session：Claude 開著且閒置，可以新對話／切換對話
- * - busy：agent 正在工作，或是不支援對話內操作的 agent（agy、Codex）
+ * - session：支援對話內操作的 agent（Claude、Antigravity）開著且閒置，可以新對話／切換對話
+ * - busy：agent 正在工作，或是不支援對話內操作的 agent（例如沒有狀態 hook 的 Codex）
  */
-export type ButtonMode = "launch" | "claude-session" | "busy";
+export type ButtonMode = "launch" | "session" | "busy";
 
 export function buttonMode(status: ClaudeStatus, running: AgentId): ButtonMode {
   if (status === "off") return "launch";
-  if (running === "claude" && (status === "idle" || status === "done")) return "claude-session";
+  if (AGENTS[running].inSession && (status === "idle" || status === "done")) return "session";
   return "busy";
 }
 
@@ -98,8 +102,9 @@ export function agentStep(
   }
   // 分頁被占用時明確選了 agent：不打斷目前的程式，在新分頁開
   if (chosen) return { kind: "new-tab", agent: chosen, command: launchCommand(chosen, intent) };
-  if (mode === "claude-session") {
-    return { kind: "agent", command: intent === "new" ? "/clear" : "/resume" };
+  if (mode === "session") {
+    const cmds = AGENTS[running].inSession;
+    if (cmds) return { kind: "agent", command: intent === "new" ? cmds.newChat : cmds.switchChat };
   }
   // 執行中或等確認時打字會打斷它
   return { kind: "wait" };

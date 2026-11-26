@@ -47,7 +47,7 @@ const MenuActions = createContext<{
 const BUTTON =
   "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12px] hover:bg-deck-hover disabled:opacity-40 disabled:hover:bg-transparent";
 
-/** 分頁列右側：沒有 agent 時是「啟動＋下拉選單＋接續」，Claude 閒置時是「新對話＋切換對話」。
+/** 分頁列右側：沒有 agent 時是「啟動＋下拉選單＋接續」，agent 閒置且支援對話內操作時是「新對話＋切換對話」。
  * 有 agent 開著時，下拉選單改成在新分頁開 agent。 */
 export function AgentButtons(props: Props) {
   return (
@@ -66,15 +66,16 @@ export function AgentButtons(props: Props) {
 
 function AgentButtonsInner({ status, running, preferred, installed, onAction }: Props) {
   const mode = buttonMode(status, running);
+  const inSession = AGENTS[running].inSession;
 
-  if (mode === "claude-session") {
+  if (mode === "session" && inSession) {
     return (
       <div className="flex shrink-0 items-center gap-1">
         <button
           type="button"
           onClick={() => onAction("new")}
           className={`${BUTTON} text-deck-text`}
-          title={t("agent.newChatTitle")}
+          title={t("agent.newChatTitle", { cmd: inSession.newChat })}
         >
           <Plus size={13} className="text-deck-accent" />
           {t("agent.newChat")}
@@ -83,7 +84,10 @@ function AgentButtonsInner({ status, running, preferred, installed, onAction }: 
           type="button"
           onClick={() => onAction("resume")}
           className={`${BUTTON} text-deck-muted hover:text-deck-text`}
-          title={t("agent.switchTitle")}
+          title={t("agent.switchTitle", {
+            agent: AGENTS[running].label,
+            cmd: inSession.switchChat,
+          })}
         >
           <History size={13} />
           {t("agent.switch")}
@@ -94,7 +98,7 @@ function AgentButtonsInner({ status, running, preferred, installed, onAction }: 
   }
 
   if (mode === "busy") {
-    // agent 正在工作，或是 agy／Codex 開著（沒有對話內的按鈕操作）
+    // agent 正在工作，或是不支援對話內按鈕操作的 agent（例如 Codex）
     return (
       <div className="flex shrink-0 items-center">
         <span className="flex h-7 items-center px-2.5 text-[12px] text-deck-muted">

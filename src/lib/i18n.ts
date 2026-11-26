@@ -83,9 +83,9 @@ const zh = {
   "side.noDoc": "專案根目錄還沒有 HANDOFF.md 或 CLAUDE.md。",
 
   "agent.newChat": "新對話",
-  "agent.newChatTitle": "清掉目前對話，重新開始（/clear；舊對話之後還能用「切換對話」找回）",
+  "agent.newChatTitle": "清掉目前對話，重新開始（{cmd}；舊對話之後還能用「切換對話」找回）",
   "agent.switch": "切換對話",
-  "agent.switchTitle": "切換到這個專案的其他 Claude 對話（/resume）",
+  "agent.switchTitle": "切換到這個專案的其他 {agent} 對話（{cmd}）",
   "agent.install": "安裝 agent",
   "agent.installTitle": "還沒安裝任何 agent，看看怎麼安裝",
   "agent.installFooter": "裝好後切回 Argus，這裡就能直接啟動",
@@ -135,8 +135,8 @@ const zh = {
   "app.openIn": "用 {app} 開啟目前專案",
   "app.run": "執行 {agent}（{cmd}）",
   "app.resumePast": "接續過去的 {agent} 對話（{cmd}）",
-  "app.claudeNew": "Claude 新對話（/clear）",
-  "app.claudeSwitch": "切換 Claude 對話（/resume）",
+  "app.agentNew": "{agent} 新對話（{cmd}）",
+  "app.agentSwitch": "切換 {agent} 對話（{cmd}）",
   "app.runInNewTab": "在新分頁執行 {agent}（{cmd}）",
   "app.anotherTab": "再開一個分頁：{label}",
   "app.closeCurrent": "關閉目前分頁",
@@ -193,7 +193,7 @@ const zh = {
   "help.agents.ownKeys": "Claude／Antigravity 裡按 ?",
   "help.agents.own": "查看 agent 自己的按鍵（例如 Claude 的 ⇧Tab 切換模式）",
   "help.agents.buttons":
-    "沒有 agent：啟動／接續；Claude 閒置：新對話／切換對話；agent 執行中：在新分頁開其他 agent",
+    "沒有 agent：啟動／接續；Claude／Antigravity 閒置：新對話／切換對話；agent 執行中：在新分頁開其他 agent",
 
   "err.dir_missing": "資料夾不存在",
   "err.file_missing": "檔案不存在",
@@ -308,9 +308,9 @@ const en: Record<MessageKey, string> = {
 
   "agent.newChat": "New chat",
   "agent.newChatTitle":
-    "Clear the conversation and start over (/clear). Earlier conversations stay available under Switch chat.",
+    "Clear the conversation and start over ({cmd}). Earlier conversations stay available under Switch chat.",
   "agent.switch": "Switch chat",
-  "agent.switchTitle": "Switch to another Claude conversation in this project (/resume)",
+  "agent.switchTitle": "Switch to another {agent} conversation in this project ({cmd})",
   "agent.install": "Install an agent",
   "agent.installTitle": "No agent is installed yet. See how to install one",
   "agent.installFooter": "Once installed, come back to Argus to start it here",
@@ -362,8 +362,8 @@ const en: Record<MessageKey, string> = {
   "app.openIn": "Open current project in {app}",
   "app.run": "Run {agent} ({cmd})",
   "app.resumePast": "Resume a past {agent} conversation ({cmd})",
-  "app.claudeNew": "New Claude conversation (/clear)",
-  "app.claudeSwitch": "Switch Claude conversation (/resume)",
+  "app.agentNew": "New {agent} conversation ({cmd})",
+  "app.agentSwitch": "Switch {agent} conversation ({cmd})",
   "app.runInNewTab": "Run {agent} in a new tab ({cmd})",
   "app.anotherTab": "Another tab: {label}",
   "app.closeCurrent": "Close current tab",
@@ -420,7 +420,7 @@ const en: Record<MessageKey, string> = {
   "help.agents.ownKeys": "? in Claude / Antigravity",
   "help.agents.own": "Show the agent's own keys (e.g. ⇧Tab in Claude switches modes)",
   "help.agents.buttons":
-    "No agent: start / resume. Claude idle: new chat / switch chat. Agent busy: open another agent in a new tab",
+    "No agent: start / resume. Claude / Antigravity idle: new chat / switch chat. Agent busy: open another agent in a new tab",
 
   "err.dir_missing": "Folder not found",
   "err.file_missing": "File not found",

@@ -583,7 +583,7 @@ export default function App() {
   }, []);
 
   /**
-   * 啟動／接續 agent，或在閒置的 Claude 裡新對話／切換對話。
+   * 啟動／接續 agent，或在閒置的 agent 裡新對話／切換對話。
    * 分頁被占用時明確選了 agent，就在右邊開一個同資料夾的新分頁執行。
    * 在這個分頁啟動時，選的 agent 會記成這個分頁的預設。
    */
@@ -869,16 +869,18 @@ export default function App() {
           );
         }
       } else {
-        if (mode === "claude-session") {
+        const inSession = AGENTS[activeRunning].inSession;
+        if (mode === "session" && inSession) {
+          const agentLabel = AGENTS[activeRunning].label;
           list.push(
             {
-              id: "claude-new",
-              label: t("app.claudeNew"),
+              id: "agent-new",
+              label: t("app.agentNew", { agent: agentLabel, cmd: inSession.newChat }),
               run: () => void agentAction("new"),
             },
             {
-              id: "claude-resume",
-              label: t("app.claudeSwitch"),
+              id: "agent-resume",
+              label: t("app.agentSwitch", { agent: agentLabel, cmd: inSession.switchChat }),
               run: () => void agentAction("resume"),
             },
           );
