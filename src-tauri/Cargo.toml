@@ -38,6 +38,11 @@ tauri-plugin-clipboard-manager = "2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Registry", "Win32_Storage_FileSystem", "Win32_System_Console"] }
 tokio = { version = "1", features = ["net", "io-util", "time", "sync"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

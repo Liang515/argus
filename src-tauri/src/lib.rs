@@ -10,6 +10,7 @@ mod project;
 mod pty;
 mod sys;
 mod theme;
+mod updater;
 mod workspace;
 
 use std::sync::Mutex;
@@ -209,6 +210,7 @@ pub fn run() {
             paths::resolve_paths,
             paths::open_path,
             theme::terminal_app_theme,
+            updater::install_update,
             project::watch_project,
             project::unwatch_project,
             confirm_quit,
