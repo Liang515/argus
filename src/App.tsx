@@ -24,6 +24,7 @@ import {
 import { type CustomAgent, parseCustomAgents } from "./lib/customAgents";
 import { nextFontSize, parseFontSize } from "./lib/fontSize";
 import { pushRecent } from "./lib/fuzzy";
+import { type HandoffPhase, handoffNext, isHandoffPrompt } from "./lib/handoff";
 import { keys, type Lang, lang, setLang, t, translateError } from "./lib/i18n";
 import { isMac } from "./lib/platform";
 import {
@@ -142,6 +143,8 @@ export default function App() {
   const [statuses, setStatuses] = useState<Record<string, ClaudeStatus>>({});
   const [runningAgents, setRunningAgents] = useState<Record<string, AgentId>>({});
   const [activities, setActivities] = useState<Record<string, ActivityState>>({});
+  // 正在交接的分頁（送出了交接指令，還沒清除或取消）
+  const [handoffs, setHandoffs] = useState<Record<string, HandoffPhase>>({});
   const [installed, setInstalled] = useState<AgentId[]>(["claude"]);
   // 有安裝的編輯器；null 表示還沒偵測完
   const [editors, setEditors] = useState<EditorInfo[] | null>(null);
@@ -205,6 +208,14 @@ export default function App() {
           setStatuses((prev) => ({ ...prev, [id]: status }));
           setRunningAgents((prev) => ({ ...prev, [id]: agent }));
           setRecaps((prev) => noteStatus(prev, tab.path, status, agent, Date.now()));
+          setHandoffs((prev) => {
+            const current = prev[id];
+            if (!current) return prev;
+            const next = handoffNext(current, status);
+            if (next === current) return prev;
+            const { [id]: _done, ...rest } = prev;
+            return next ? { ...rest, [id]: next } : rest;
+          });
         },
         (id, event, agent) => {
           setActivities((prev) => ({
@@ -212,6 +223,9 @@ export default function App() {
             [id]: applyActivity(prev[id] ?? EMPTY_ACTIVITY, event, Date.now()),
           }));
           setRecaps((prev) => noteActivity(prev, tab.path, event, Date.now(), agent));
+          if (event.k === "prompt" && isHandoffPrompt(event.text)) {
+            setHandoffs((prev) => (prev[id] === "writing" ? prev : { ...prev, [id]: "writing" }));
+          }
         },
       );
       sessions.current.set(tab.id, session);
@@ -579,6 +593,7 @@ export default function App() {
     setTabs(current.filter((t) => t.id !== id));
     setStatuses(({ [id]: _closed, ...rest }) => rest);
     setActivities(({ [id]: _gone, ...rest }) => rest);
+    setHandoffs(({ [id]: _gone, ...rest }) => rest);
     setActiveId(activeAfterClose(current, id, active));
   }, []);
 
@@ -620,6 +635,37 @@ export default function App() {
     },
     [sessionFor, insertTabAfter],
   );
+
+  /**
+   * ⌘K 的交接：替使用者送出交接指令，之後和自己打「交接」一樣由 hook 回報的訊息接手。
+   * 寫完後分頁列會出現「清除對話」，一定要使用者按了才送 /clear（讓人先看過交接內容，漏寫還能補）。
+   * 送的是一句話而不是 /handoff：沒有 handoff skill 的人也能照專案的交接規則做。
+   */
+  const startHandoff = useCallback(async () => {
+    const { activeId: active, statuses: st, runningAgents: ra } = latest.current;
+    const session = active ? sessions.current.get(active) : undefined;
+    if (!session || !active) return;
+    const busy = await invoke<boolean>("pty_is_busy", { id: session.id }).catch(() => false);
+    if (!busy || buttonMode(st[active] ?? "off", ra[active] ?? "claude") !== "session") return;
+    session.run(t("agent.handoffPrompt"));
+  }, []);
+
+  const cancelHandoff = useCallback(() => {
+    const active = latest.current.activeId;
+    if (active) setHandoffs(({ [active]: _gone, ...rest }) => rest);
+    refocusTerminal();
+  }, [refocusTerminal]);
+
+  /** 交接後清除：Claude 先留記號，清除後的新對話才會被提醒先讀 HANDOFF.md（見 handoff.rs）。 */
+  const clearAfterHandoff = useCallback(async () => {
+    const { activeId: active, runningAgents: ra } = latest.current;
+    if (!active) return;
+    setHandoffs(({ [active]: _gone, ...rest }) => rest);
+    if ((ra[active] ?? "claude") === "claude") {
+      await invoke("handoff_mark", { id: active }).catch(() => {});
+    }
+    await agentAction("new");
+  }, [agentAction]);
 
   /** 自訂指令：分頁空著就在這裡打，被占用就在右邊開新分頁，和內建 agent 一樣。 */
   const customAction = useCallback(
@@ -770,6 +816,7 @@ export default function App() {
   const activeStatus = activeId ? (statuses[activeId] ?? "off") : "off";
   const activeRunning = activeId ? (runningAgents[activeId] ?? "claude") : "claude";
   const activePreferred = preferredAgent(activeTab?.agent, installed);
+  const activeHandoff = activeId ? handoffs[activeId] : undefined;
 
   const duplicateActions = useMemo<PaletteAction[]>(
     () => [
@@ -870,8 +917,17 @@ export default function App() {
         }
       } else {
         const inSession = AGENTS[activeRunning].inSession;
-        if (mode === "session" && inSession) {
-          const agentLabel = AGENTS[activeRunning].label;
+        const agentLabel = AGENTS[activeRunning].label;
+        if (activeHandoff && inSession) {
+          if (activeHandoff === "confirm" && mode === "session") {
+            list.push({
+              id: "handoff-clear",
+              label: t("app.handoffClear", { agent: agentLabel, cmd: inSession.newChat }),
+              run: () => void clearAfterHandoff(),
+            });
+          }
+          list.push({ id: "handoff-cancel", label: t("app.handoffCancel"), run: cancelHandoff });
+        } else if (mode === "session" && inSession) {
           list.push(
             {
               id: "agent-new",
@@ -882,6 +938,11 @@ export default function App() {
               id: "agent-resume",
               label: t("app.agentSwitch", { agent: agentLabel, cmd: inSession.switchChat }),
               run: () => void agentAction("resume"),
+            },
+            {
+              id: "agent-handoff",
+              label: t("app.agentHandoff", { agent: agentLabel }),
+              run: () => void startHandoff(),
             },
           );
         }
@@ -923,6 +984,10 @@ export default function App() {
     switchLang,
     activeStatus,
     activeRunning,
+    activeHandoff,
+    startHandoff,
+    clearAfterHandoff,
+    cancelHandoff,
     installed,
     sidebarOpen,
     themeId,
@@ -954,6 +1019,9 @@ export default function App() {
         onAgentMenuOpen={onAgentMenuOpen}
         customAgents={customAgents}
         onCustomAgent={(agent) => void customAction(agent)}
+        handoff={activeHandoff}
+        onHandoffClear={() => void clearAfterHandoff()}
+        onHandoffCancel={cancelHandoff}
         updateVersion={update?.version ?? null}
         updating={updating}
         onUpdate={() => void applyUpdate()}

@@ -6,6 +6,7 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("--hook-summary") => return argus_lib::hook_summary_main(),
+        Some("--handoff-context") => return argus_lib::handoff_context_main(),
         // Windows 的狀態 hook（見 hook.rs）
         Some("--hook") => return argus_lib::hook_main(&args[1..]),
         _ => {}

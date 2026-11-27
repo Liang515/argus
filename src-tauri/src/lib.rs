@@ -2,6 +2,7 @@ mod activity;
 mod custom_agents;
 mod editors;
 mod git;
+mod handoff;
 mod hook;
 mod integration;
 mod paths;
@@ -142,6 +143,11 @@ pub fn hook_summary_main() {
     activity::hook_summary_main();
 }
 
+/// `argus --handoff-context`：交接後清除對話的 SessionStart hook（見 handoff.rs）。
+pub fn handoff_context_main() {
+    handoff::context_main();
+}
+
 /// Windows：stdin 是不是管線（見 main.rs 的舊版 Claude Code 判斷）。
 #[cfg(windows)]
 pub fn stdin_is_pipe() -> bool {
@@ -199,6 +205,7 @@ pub fn run() {
             custom_agents::read_custom_agents,
             custom_agents::edit_custom_agents,
             project::add_handoff_protocol,
+            handoff::handoff_mark,
             paths::resolve_paths,
             paths::open_path,
             theme::terminal_app_theme,

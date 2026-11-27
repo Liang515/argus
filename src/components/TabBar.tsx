@@ -2,6 +2,7 @@ import { ArrowUpCircle, ChevronDown, GitBranch, Keyboard, Plus, X } from "lucide
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AgentId, AgentIntent } from "../lib/agents";
 import type { CustomAgent } from "../lib/customAgents";
+import type { HandoffPhase } from "../lib/handoff";
 import { keys, t } from "../lib/i18n";
 import { isMac } from "../lib/platform";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
@@ -61,6 +62,10 @@ interface Props {
   onAgentMenuOpen: () => void;
   customAgents: CustomAgent[];
   onCustomAgent: (agent: CustomAgent) => void;
+  /** 目前分頁的交接流程 */
+  handoff?: HandoffPhase;
+  onHandoffClear: () => void;
+  onHandoffCancel: () => void;
   /** 有新版時的版本號，沒有就是 null（不顯示任何東西） */
   updateVersion: string | null;
   updating: boolean;
@@ -87,6 +92,9 @@ export function TabBar({
   onAgentMenuOpen,
   customAgents,
   onCustomAgent,
+  handoff,
+  onHandoffClear,
+  onHandoffCancel,
   updateVersion,
   updating,
   onUpdate,
@@ -307,6 +315,9 @@ export function TabBar({
           onMenuOpen={onAgentMenuOpen}
           custom={customAgents}
           onCustom={onCustomAgent}
+          handoff={handoff}
+          onHandoffClear={onHandoffClear}
+          onHandoffCancel={onHandoffCancel}
         />
       )}
       <button

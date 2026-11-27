@@ -5,13 +5,17 @@ import {
   ChevronDown,
   Copy,
   Download,
+  FileCheck,
   History,
+  Loader2,
   Plus,
   Terminal,
+  X,
 } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { AGENT_IDS, AGENTS, type AgentId, type AgentIntent, buttonMode } from "../lib/agents";
 import type { CustomAgent } from "../lib/customAgents";
+import type { HandoffPhase } from "../lib/handoff";
 import { t } from "../lib/i18n";
 import { type ClaudeStatus, statusLabel } from "../lib/status";
 
@@ -30,6 +34,10 @@ interface Props {
   /** ~/.argus/agents.json 的自訂指令 */
   custom: CustomAgent[];
   onCustom: (agent: CustomAgent) => void;
+  /** 這個分頁的交接流程進行到哪；沒有代表沒在交接。交接中會取代原本的按鈕，不多佔位置 */
+  handoff?: HandoffPhase;
+  onHandoffClear: () => void;
+  onHandoffCancel: () => void;
 }
 
 const MenuActions = createContext<{
@@ -64,9 +72,54 @@ export function AgentButtons(props: Props) {
   );
 }
 
-function AgentButtonsInner({ status, running, preferred, installed, onAction }: Props) {
+function AgentButtonsInner({
+  status,
+  running,
+  preferred,
+  installed,
+  onAction,
+  handoff,
+  onHandoffClear,
+  onHandoffCancel,
+}: Props) {
   const mode = buttonMode(status, running);
   const inSession = AGENTS[running].inSession;
+
+  if (handoff && inSession) {
+    const ready = handoff === "confirm" && mode === "session";
+    return (
+      <div className="flex shrink-0 items-center gap-1">
+        <span className="flex h-7 items-center gap-1.5 px-2.5 text-[12px] text-deck-muted">
+          {ready ? (
+            <FileCheck size={13} className="text-deck-accent" />
+          ) : (
+            <Loader2 size={13} className="animate-spin" />
+          )}
+          {ready ? t("agent.handoffReady") : t("agent.handoffWriting")}
+        </span>
+        {ready && (
+          <button
+            type="button"
+            onClick={onHandoffClear}
+            className={`${BUTTON} text-deck-text`}
+            title={t("agent.handoffClearTitle", { cmd: inSession.newChat })}
+          >
+            <Plus size={13} className="text-deck-accent" />
+            {t("agent.handoffClear")}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onHandoffCancel}
+          className={`${BUTTON} text-deck-muted hover:text-deck-text`}
+          title={t("agent.handoffCancelTitle")}
+        >
+          <X size={13} />
+          {t("agent.handoffCancel")}
+        </button>
+      </div>
+    );
+  }
 
   if (mode === "session" && inSession) {
     return (

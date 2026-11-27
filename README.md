@@ -12,7 +12,7 @@ A terminal workspace for coding agents on macOS (and, in preview, Windows). Keep
 - **One launcher for several agents**: start or resume Claude Code, `agy` or Codex from the tab bar. If the tab is busy, the chosen agent opens in a new tab for the same folder instead of interrupting the current one.
 - **Project sidebar** with three views: **Activity** (Claude's to-do plan with a progress bar, and each step as Claude or `agy` works: files read and edited, commands run with ✓/✗ and duration), **Changes** (live Git status) and **Handoff** (the project's `HANDOFF.md` or `CLAUDE.md`, rendered as it is updated).
 - **Recent work across projects (⌘J)**: all projects sorted by last activity, showing the status light, branch, last prompt, edited files, and uncommitted Git count — the last prompt and edited files stay even after the tab is closed. Search and press Enter to jump back or reopen it.
-- **Handoff protocol**: one click adds rules to the project's `CLAUDE.md` so the agent keeps `HANDOFF.md` up to date. When you switch agents or people, the next one can pick up where the last one stopped.
+- **Handoff protocol**: one click adds rules to the project's `CLAUDE.md` so the agent keeps `HANDOFF.md` up to date. When you switch agents or people, the next one can pick up where the last one stopped. Tell the agent "handoff" (or `/handoff`, or pick it from ⌘K); once it has written `HANDOFF.md`, **Clear chat** appears in the tab bar and starts fresh only when you click it (it never clears on its own).
 - **Several tabs per project**: same folder, or a new Git worktree so two agents don't overwrite each other (⌘⇧T). Tab names stay readable; when they don't fit, an "all tabs" menu lists them and lights up if a hidden tab needs you.
 - **Open the project in your editor or Finder**: VS Code, Cursor, Windsurf, Antigravity or Zed. Only the editors you have installed are listed, and Argus remembers the one you pick.
 - **⌘-click file paths in the terminal**: code and text files open in your editor at the right line (`src/App.tsx:313`), HTML files without a line number open in your browser for preview, and other files open in their default app. ⌘⌥-click reveals the file in Finder. Apps, scripts and installers are never run from a click.
@@ -30,6 +30,7 @@ A terminal workspace for coding agents on macOS (and, in preview, Windows). Keep
 | Running and done lights         | ✓           | ✓         | –                              |
 | Waiting-for-you light           | ✓           | –         | best effort (from screen text) |
 | New chat / switch chat buttons  | ✓           | ✓         | –                              |
+| Hand off, then clear chat       | ✓           | ✓         | –                              |
 | Activity panel                  | ✓           | ✓ (steps) | –                              |
 | Recent work (prompt & files)    | ✓           | ✓         | time only                      |
 

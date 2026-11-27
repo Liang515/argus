@@ -257,7 +257,20 @@ fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
-pub fn hooks_settings(hook_script: &Path) -> serde_json::Value {
+/// 交接後清除對話時，請新對話先讀 HANDOFF.md（見 [`crate::handoff`]）。
+/// 只在 `/clear` 觸發，沒有交接記號時 `argus --handoff-context` 什麼都不印。
+fn with_handoff_context(
+    mut settings: serde_json::Value,
+    hook: serde_json::Value,
+) -> serde_json::Value {
+    if let Some(list) = settings["hooks"]["SessionStart"].as_array_mut() {
+        list.push(json!({ "matcher": "clear", "hooks": [hook] }));
+    }
+    settings
+}
+
+/// `argus_bin` 是 Argus 執行檔；沒有就不加交接後清除的 hook。
+pub fn hooks_settings(hook_script: &Path, argus_bin: Option<&Path>) -> serde_json::Value {
     let hook = |state: &str| {
         json!([{
             "matcher": "*",
@@ -267,7 +280,7 @@ pub fn hooks_settings(hook_script: &Path) -> serde_json::Value {
             }],
         }])
     };
-    json!({
+    let settings = json!({
         "hooks": {
             "SessionStart": hook("idle"),
             "UserPromptSubmit": hook("running"),
@@ -278,7 +291,17 @@ pub fn hooks_settings(hook_script: &Path) -> serde_json::Value {
             "Stop": hook("done"),
             "SessionEnd": hook("off"),
         }
-    })
+    });
+    match argus_bin {
+        Some(bin) => with_handoff_context(
+            settings,
+            json!({
+                "type": "command",
+                "command": format!("{} --handoff-context", shell_quote(&bin.to_string_lossy())),
+            }),
+        ),
+        None => settings,
+    }
 }
 
 /// Windows 的 Claude hooks：exec 形式（有 `args`）直接啟動 argus.exe，不經 shell，
@@ -296,7 +319,7 @@ pub fn exec_hooks_settings(argus_exe: &Path) -> serde_json::Value {
             }],
         }])
     };
-    json!({
+    let settings = json!({
         "hooks": {
             "SessionStart": hook("idle"),
             "UserPromptSubmit": hook("running"),
@@ -307,7 +330,11 @@ pub fn exec_hooks_settings(argus_exe: &Path) -> serde_json::Value {
             "Stop": hook("done"),
             "SessionEnd": hook("off"),
         }
-    })
+    });
+    with_handoff_context(
+        settings,
+        json!({ "type": "command", "command": exe, "args": ["--handoff-context"] }),
+    )
 }
 
 /// 把整合檔案寫到 `dir`（每次啟動覆寫，確保跟目前版本一致）。
@@ -327,7 +354,7 @@ pub fn install_with_bin(dir: &Path, argus_bin: Option<&Path>) -> io::Result<Inte
     let hooks_file = dir.join("hooks.json");
     fs::write(
         &hooks_file,
-        serde_json::to_string_pretty(&hooks_settings(&hook_script))?,
+        serde_json::to_string_pretty(&hooks_settings(&hook_script, argus_bin))?,
     )?;
 
     for (name, content) in zsh_files() {
@@ -392,6 +419,9 @@ mod portable_tests {
         assert_eq!(hook["command"], r"C:\Program Files\Argus\argus.exe");
         assert_eq!(hook["args"], json!(["--hook", "notify"]));
         assert_eq!(settings["hooks"].as_object().unwrap().len(), 8);
+        let clear = &settings["hooks"]["SessionStart"][1];
+        assert_eq!(clear["matcher"], "clear");
+        assert_eq!(clear["hooks"][0]["args"], json!(["--handoff-context"]));
     }
 
     #[test]
@@ -488,7 +518,7 @@ mod tests {
 
     #[test]
     fn hooks_cover_every_status_event() {
-        let settings = hooks_settings(Path::new("/x/it's/hook.sh"));
+        let settings = hooks_settings(Path::new("/x/it's/hook.sh"), None);
         let hooks = settings["hooks"].as_object().unwrap();
         for event in [
             "SessionStart",
@@ -506,6 +536,20 @@ mod tests {
             .as_str()
             .unwrap();
         assert_eq!(cmd, r"sh '/x/it'\''s/hook.sh' done");
+        // 沒有 Argus 執行檔就不加交接後清除的 hook
+        assert_eq!(hooks["SessionStart"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn clear_starts_read_the_handoff_mark() {
+        let settings = hooks_settings(Path::new("/x/hook.sh"), Some(Path::new("/A pp/argus")));
+        let start = settings["hooks"]["SessionStart"].as_array().unwrap();
+        assert_eq!(start[0]["matcher"], "*");
+        assert_eq!(start[1]["matcher"], "clear");
+        assert_eq!(
+            start[1]["hooks"][0]["command"],
+            "'/A pp/argus' --handoff-context"
+        );
     }
 
     fn run_hook(dir: &Path, state: &str, payload: &str) -> String {
