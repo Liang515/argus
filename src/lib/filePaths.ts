@@ -152,14 +152,32 @@ export function lineText(cells: CellLike[]): { text: string; col: number[]; widt
 export const URL_REGEX =
   /(https?|HTTPS?):[/]{2}[^\s"'!*(){}|\\^<>`\u3000-\u303f\uff00-\uffef]*[^\s"':,.!?{}|\\^~[\]`()<>\u3000-\u303f\uff00-\uffef]/;
 
+const HASH_LINE = /^#L([1-9]\d*)(?:(?:C|:)([1-9]\d*))?(?:-L?\d+(?:(?:C|:)\d+)?)?$/i;
+
+function homePath(rest: string, os: Platform): string | null {
+  if (!rest || rest === "/") return "~";
+  if (!rest.startsWith("/") || rest.startsWith("//") || rest.startsWith("/\\")) return null;
+  const full = `~${rest}`;
+  return os === "windows" ? full.replace(/\//g, "\\") : full;
+}
+
 /**
- * 終端機程式用 OSC 8 標的超連結要打開什麼：http(s) 網址，或 `file://` 指向的本機路徑。
+ * 終端機程式用 OSC 8 標的超連結要打開什麼：http(s) 網址，或 `file://` 指向的本機路徑
+ * （包含 `file://~/…`、`file:///~/…`、直接寫 `~/…`，以及 `#L10-L20` 行號）。
  * 其他協定（以及別台主機的 file://）一律不開。
  */
 export function hyperlinkTarget(
   uri: string,
   os: Platform = platform,
-): { kind: "url"; url: string } | { kind: "path"; path: string } | null {
+):
+  | { kind: "url"; url: string }
+  | { kind: "path"; path: string; line?: number; column?: number }
+  | null {
+  // 部分終端機程式（例如 agy 輸出 `~/…` 連結時）可能直接把家目錄路徑放進 OSC 8
+  if (uri === "~" || uri.startsWith("~/")) {
+    const path = homePath(uri.slice(1), os);
+    return path ? { kind: "path", path } : null;
+  }
   let url: URL;
   try {
     url = new URL(uri);
@@ -167,17 +185,33 @@ export function hyperlinkTarget(
     return null;
   }
   if (url.protocol === "http:" || url.protocol === "https:") return { kind: "url", url: uri };
-  if (url.protocol !== "file:" || (url.hostname && url.hostname !== "localhost")) return null;
-  let path: string;
+  if (url.protocol !== "file:") return null;
+  const isHomeHost = url.hostname === "~";
+  if (url.hostname && url.hostname !== "localhost" && !isHomeHost) return null;
+  let decoded: string;
   try {
-    path = decodeURIComponent(url.pathname);
+    decoded = decodeURIComponent(url.pathname);
   } catch {
     return null;
   }
-  // Windows：file:///C:/a/b → C:\a\b
-  if (os === "windows") {
-    if (!/^\/[A-Za-z]:\//.test(path)) return null;
-    path = path.slice(1).replace(/\//g, "\\");
+  let path: string | null;
+  if (isHomeHost) {
+    path = homePath(decoded, os);
+  } else if (decoded === "/~" || decoded.startsWith("/~/")) {
+    path = homePath(decoded.slice(2), os);
+  } else if (os === "windows") {
+    // Windows：file:///C:/a/b → C:\a\b
+    path = /^\/[A-Za-z]:\//.test(decoded) ? decoded.slice(1).replace(/\//g, "\\") : null;
+  } else {
+    path = decoded || null;
   }
-  return path ? { kind: "path", path } : null;
+  if (!path) return null;
+  const hash = HASH_LINE.exec(url.hash);
+  if (!hash) return { kind: "path", path };
+  return {
+    kind: "path",
+    path,
+    line: Number(hash[1]),
+    ...(hash[2] ? { column: Number(hash[2]) } : {}),
+  };
 }

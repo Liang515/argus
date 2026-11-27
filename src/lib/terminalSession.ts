@@ -125,7 +125,7 @@ export class TerminalSession {
           const target = hyperlinkTarget(uri);
           if (target?.kind === "url") void openUrl(target.url).catch(() => {});
           else if (target?.kind === "path")
-            void openPath(target.path, event.altKey).catch(() => {});
+            void openPath(target.path, event.altKey, target.line, target.column).catch(() => {});
         },
       },
     });

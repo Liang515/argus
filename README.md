@@ -15,7 +15,7 @@ A terminal workspace for coding agents on macOS (and, in preview, Windows). Keep
 - **Handoff protocol**: one click adds rules to the project's `CLAUDE.md` so the agent keeps `HANDOFF.md` up to date. When you switch agents or people, the next one can pick up where the last one stopped.
 - **Several tabs per project**: same folder, or a new Git worktree so two agents don't overwrite each other (⌘⇧T). Tab names stay readable; when they don't fit, an "all tabs" menu lists them and lights up if a hidden tab needs you.
 - **Open the project in your editor or Finder**: VS Code, Cursor, Windsurf, Antigravity or Zed. Only the editors you have installed are listed, and Argus remembers the one you pick.
-- **⌘-click file paths in the terminal**: code and text files open in your editor at the right line (`src/App.tsx:313`), other files in their default app. ⌘⌥-click reveals the file in Finder. Apps, scripts and installers are never run from a click.
+- **⌘-click file paths in the terminal**: code and text files open in your editor at the right line (`src/App.tsx:313`), HTML files without a line number open in your browser for preview, and other files open in their default app. ⌘⌥-click reveals the file in Finder. Apps, scripts and installers are never run from a click.
 - **macOS editing keys in the terminal**: ⌘← / ⌘→ for line start/end, ⌥← / ⌥→ by word, ⌘⌫ to delete to line start, ⇧↩ for a newline in Claude Code.
 - **Keyboard first**: ⌘K project and action switcher, ⌘J recent work, ⌘1–9 to jump to a tab, ⌘+ / ⌘− / ⌘0 to zoom the terminal text, ⌘/ for all shortcuts.
 - **Color themes**: Argus, Clear Dark, or match your macOS Terminal profile (⌘K, search "theme").

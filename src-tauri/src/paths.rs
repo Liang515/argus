@@ -43,9 +43,9 @@ pub struct ResolvedPath {
     pub is_dir: bool,
 }
 
-/// `~/`（Windows 也接受 `~\`）換成家目錄，相對路徑接在 `base`（分頁的專案資料夾）後面。
-/// 網路路徑不解析（見 [`crate::sys::is_network_path`]）。
-pub fn expand(base: &Path, home: Option<&Path>, raw: &str) -> Option<PathBuf> {
+/// `~` 或 `~/`（Windows 也接受 `~\`）換成家目錄；不是家目錄開頭則原樣回傳。
+/// `~//server/share` 這類接在後面會變成絕對／網路路徑的直接拒絕。
+pub fn expand_home(home: Option<&Path>, raw: &str) -> Option<PathBuf> {
     if raw.is_empty() || crate::sys::is_network_path(raw) {
         return None;
     }
@@ -53,11 +53,20 @@ pub fn expand(base: &Path, home: Option<&Path>, raw: &str) -> Option<PathBuf> {
         return home.map(Path::to_path_buf);
     }
     if let Some(rest) = strip_home(raw) {
+        if rest.starts_with('/') || rest.starts_with('\\') || crate::sys::is_network_path(rest) {
+            return None;
+        }
         return home.map(|h| h.join(rest));
     }
-    let path = Path::new(raw);
+    Some(PathBuf::from(raw))
+}
+
+/// `~/`（Windows 也接受 `~\`）換成家目錄，相對路徑接在 `base`（分頁的專案資料夾）後面。
+/// 網路路徑不解析（見 [`crate::sys::is_network_path`]）。
+pub fn expand(base: &Path, home: Option<&Path>, raw: &str) -> Option<PathBuf> {
+    let path = expand_home(home, raw)?;
     Some(if path.is_absolute() {
-        path.to_path_buf()
+        path
     } else {
         base.join(path)
     })
@@ -105,13 +114,15 @@ pub fn is_runnable(path: &Path) -> bool {
 }
 
 /// 程式碼與文字檔：有裝 VS Code／Antigravity 時用它打開（還能跳到行號），不交給系統預設 App。
-const TEXT_EXTENSIONS: [&str; 52] = [
+const TEXT_EXTENSIONS: [&str; 51] = [
     "md", "markdown", "mdx", "txt", "rst", "adoc", "json", "jsonc", "json5", "yaml", "yml", "toml",
     "ini", "cfg", "conf", "env", "xml", "csv", "tsv", "log", "ts", "tsx", "js", "jsx", "mjs",
     "cjs", "rs", "go", "py", "rb", "php", "java", "kt", "swift", "c", "h", "cc", "cpp", "hpp",
-    "cs", "css", "scss", "html", "vue", "svelte", "sql", "lua", "sh", "zsh", "bash", "fish",
-    "lock",
+    "cs", "css", "scss", "vue", "svelte", "sql", "lua", "sh", "zsh", "bash", "fish", "lock",
 ];
+
+/// 網頁檔：沒有帶行號時交給系統預設瀏覽器預覽，有帶 `:行號`（例如報錯位置）才用編輯器打開。
+const BROWSER_EXTENSIONS: [&str; 2] = ["html", "htm"];
 
 /// 沒有副檔名但通常是文字的檔名。
 const TEXT_FILE_NAMES: [&str; 8] = [
@@ -133,6 +144,17 @@ pub fn is_text_file(path: &Path) -> bool {
             .extension()
             .and_then(|e| e.to_str())
             .is_some_and(|e| TEXT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+pub fn is_browser_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| BROWSER_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// 這個檔案這次要不要交給編輯器：文字檔一律用編輯器；網頁檔只有帶行號時用編輯器，沒帶行號就給瀏覽器預覽。
+fn open_in_editor(path: &Path, line: Option<u32>) -> bool {
+    is_text_file(path) || (line.is_some() && is_browser_file(path))
 }
 
 /// 網址路徑用的百分比編碼：保留英數與 `/-._~`，其餘（空白、中文等）逐位元組編碼。
@@ -190,8 +212,8 @@ pub enum OpenAction {
     EditorApp(&'static str),
 }
 
-/// ⌘⌥＋點擊 → 在 Finder 顯示；文字檔且有編輯器 → 編輯器（只開不執行，腳本也安全）；
-/// 會執行的檔案 → 只在 Finder 顯示；其他 → 系統預設 App。
+/// ⌘⌥＋點擊 → 在 Finder 顯示；文字檔（或帶行號的 HTML）且有編輯器 → 編輯器（只開不執行，腳本也安全）；
+/// 會執行的檔案 → 只在 Finder 顯示；其他（包含沒帶行號的 HTML）→ 系統預設 App。
 pub fn decide(
     path: &Path,
     is_dir: bool,
@@ -204,7 +226,7 @@ pub fn decide(
         return OpenAction::Reveal;
     }
     if !is_dir
-        && is_text_file(path)
+        && open_in_editor(path, line)
         && let Some(editor) = editor
     {
         return match editor.scheme {
@@ -232,11 +254,13 @@ pub async fn open_path(
     if crate::sys::is_network_path(&path) {
         return Err("open_failed".into());
     }
+    let home = dirs::home_dir();
+    let expanded = expand_home(home.as_deref(), &path).ok_or("file_missing")?;
     // 先解開符號連結：名為 pic.png 卻指向某個 .app 的連結，要用實際的目標判斷
-    let real = crate::sys::canonicalize(&path).map_err(|_| "file_missing".to_string())?;
+    let real = crate::sys::canonicalize(&expanded).map_err(|_| "file_missing".to_string())?;
     let target = real.as_path();
     let meta = fs::metadata(target).map_err(|_| "file_missing".to_string())?;
-    let editor = if !reveal && !meta.is_dir() && is_text_file(target) {
+    let editor = if !reveal && !meta.is_dir() && open_in_editor(target, line) {
         editors::pick_installed(editor.as_deref())
     } else {
         None
@@ -499,5 +523,52 @@ mod tests {
         );
         assert!(is_runnable(Path::new("/tmp/Installer.dmg")));
         assert!(is_runnable(Path::new("/tmp/site.webloc")));
+    }
+
+    #[test]
+    fn html_opens_in_browser_unless_line_number_is_given() {
+        let html = Path::new("/p/wireframe.html");
+        let htm = Path::new("/p/demo.HTM");
+        // 沒帶行號：交給預設瀏覽器預覽，即使有裝編輯器也不開原始碼
+        assert_eq!(
+            decide(html, false, false, find("vscode"), None, None),
+            OpenAction::OpenDefault
+        );
+        assert_eq!(
+            decide(htm, false, false, find("vscode"), None, None),
+            OpenAction::OpenDefault
+        );
+        // 有帶行號（例如報錯位置）：用編輯器打開並跳到該行
+        assert_eq!(
+            decide(html, false, false, find("vscode"), Some(42), Some(3)),
+            OpenAction::Editor("vscode://file/p/wireframe.html:42:3".into())
+        );
+        assert_eq!(
+            decide(htm, false, false, find("antigravity"), Some(7), None),
+            OpenAction::Editor("antigravity-ide://file/p/demo.HTM:7".into())
+        );
+        // ⌘⌥＋點擊仍然在 Finder 顯示
+        assert_eq!(
+            decide(html, false, true, find("vscode"), None, None),
+            OpenAction::Reveal
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn expand_home_expands_tilde_and_rejects_escaped_network_paths() {
+        let home = Some(Path::new("/home/me"));
+        assert_eq!(expand_home(home, "~"), Some(PathBuf::from("/home/me")));
+        assert_eq!(
+            expand_home(home, "~/.gemini/wireframe.html"),
+            Some(PathBuf::from("/home/me/.gemini/wireframe.html"))
+        );
+        assert_eq!(
+            expand_home(home, "/Users/me/a.html"),
+            Some(PathBuf::from("/Users/me/a.html"))
+        );
+        assert_eq!(expand_home(home, "~//attacker/share"), None);
+        assert_eq!(expand_home(home, r"~/\attacker\share"), None);
+        assert_eq!(expand_home(None, "~/a.html"), None);
     }
 }

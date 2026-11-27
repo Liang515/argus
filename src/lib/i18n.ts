@@ -183,7 +183,8 @@ const zh = {
   "help.typing.paste": "貼上",
   "help.links": "連結",
   "help.links.openKeys": "⌘＋點擊路徑",
-  "help.links.open": "開啟檔案：程式碼用 VS Code／Antigravity 並跳到行號，資料夾開在 Finder",
+  "help.links.open":
+    "開啟檔案：程式碼用 VS Code／Antigravity 並跳到行號，HTML 用瀏覽器預覽，資料夾開在 Finder",
   "help.links.revealKeys": "⌘⌥＋點擊路徑",
   "help.links.reveal": "在 Finder 顯示並選取",
   "help.links.urlKeys": "⌘＋點擊網址",
@@ -410,7 +411,8 @@ const en: Record<MessageKey, string> = {
   "help.typing.paste": "Paste",
   "help.links": "Links",
   "help.links.openKeys": "⌘-click a path",
-  "help.links.open": "Open the file: code in VS Code / Antigravity at the line, folders in Finder",
+  "help.links.open":
+    "Open the file: code in VS Code / Antigravity at the line, HTML in your browser, folders in Finder",
   "help.links.revealKeys": "⌘⌥-click a path",
   "help.links.reveal": "Reveal in Finder",
   "help.links.urlKeys": "⌘-click a URL",

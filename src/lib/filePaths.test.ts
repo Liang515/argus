@@ -84,7 +84,7 @@ describe("hyperlinkTarget（OSC 8 超連結）", () => {
       url: "https://2048-drab.vercel.app",
     });
   });
-  it("file:// 轉成本機路徑（解開 %20 等編碼）", () => {
+  it("file:// 轉成本機路徑（解開 %20 等編碼，支援家目錄與 #L 行號）", () => {
     expect(hyperlinkTarget("file:///Users/a/my%20app/x.ts")).toEqual({
       kind: "path",
       path: "/Users/a/my app/x.ts",
@@ -94,11 +94,43 @@ describe("hyperlinkTarget（OSC 8 超連結）", () => {
       kind: "path",
       path: "C:\\Users\\a\\x.ts",
     });
+    expect(hyperlinkTarget("file://~/.gemini/scratch/wireframe.html")).toEqual({
+      kind: "path",
+      path: "~/.gemini/scratch/wireframe.html",
+    });
+    expect(hyperlinkTarget("file:///~/.gemini/scratch/wireframe.html")).toEqual({
+      kind: "path",
+      path: "~/.gemini/scratch/wireframe.html",
+    });
+    expect(hyperlinkTarget("file://~")).toEqual({ kind: "path", path: "~" });
+    expect(hyperlinkTarget("~/.gemini/scratch/wireframe.html")).toEqual({
+      kind: "path",
+      path: "~/.gemini/scratch/wireframe.html",
+    });
+    expect(hyperlinkTarget("file://~/.gemini/wireframe.html", "windows")).toEqual({
+      kind: "path",
+      path: "~\\.gemini\\wireframe.html",
+    });
+    expect(hyperlinkTarget("file:///Users/a/App.tsx#L10-L20")).toEqual({
+      kind: "path",
+      path: "/Users/a/App.tsx",
+      line: 10,
+    });
+    expect(hyperlinkTarget("file:///Users/a/App.tsx#L12C4")).toEqual({
+      kind: "path",
+      path: "/Users/a/App.tsx",
+      line: 12,
+      column: 4,
+    });
   });
   it("其他協定、別台主機與壞掉的網址都不開", () => {
     expect(hyperlinkTarget("javascript:alert(1)")).toBeNull();
     expect(hyperlinkTarget("vscode://file/x")).toBeNull();
     expect(hyperlinkTarget("file://server/share/x")).toBeNull();
+    expect(hyperlinkTarget("file://~other/x")).toBeNull();
+    expect(hyperlinkTarget("file://~//server/share/x")).toBeNull();
+    expect(hyperlinkTarget("file:///~//server/share/x")).toBeNull();
+    expect(hyperlinkTarget("~//server/share/x")).toBeNull();
     expect(hyperlinkTarget("file:///%E0%A4%A")).toBeNull();
     expect(hyperlinkTarget("not a url")).toBeNull();
     expect(hyperlinkTarget("file:///tmp/x", "windows")).toBeNull();
